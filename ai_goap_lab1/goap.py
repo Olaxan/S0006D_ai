@@ -115,7 +115,7 @@ class Planner():
         return result
 
     def check_state(self, test: dict, state: dict) -> bool:
-        
+
         for t in test:
             match = False
             for s in state:
@@ -131,9 +131,4 @@ class Planner():
         found = False
 
         for action in actions:
-
-
-    
-
-        
-
+            pass
