@@ -1,43 +1,42 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
-class Action(ABC):
+class WorldState():
+
+    _state: dict = {}
+
+    def __init__(self, state: dict):
+        _state = state
+
+    def add_state(self, key: str, state: bool):
+        self._state[key] = state
+
+    def remove_state(self, key: str):
+        self._state.pop(key)
+
+class Action():
 
     _preconditions = {}
     _effects = {}
 
-    _is_in_range = False
+    _key = "Action"
     _cost = 1
 
-    _target = None
+    def __init__(self, key: str, cost: int, pre: list, post: list):
+        self._key = key
+        self._cost = cost
 
-    def add_precondition(self, key: str, condition: bool) -> None:
-        self._preconditions[key] = condition
+    def add_precondition(self, state: WorldState) -> None:
+        self._preconditions[state._property_key] = state
 
     def remove_precondition(self, key: str) -> None:
         self._preconditions.pop(key)
 
-    def add_effect(self, key: str, effect: bool) -> None:
-        self._effects[key] = effect
+    def add_effect(self, state: WorldState) -> None:
+        self._effects[state._property_key] = state
 
     def remove_effect(self, key: str) -> None:
         self._effects.pop(key)
-
-    def do_reset(self):
-        _is_in_range = False
-        _target = None
-        self.reset()
-
-    def reset(self) -> None:
-        pass
-
-    @property
-    def in_range(self) -> bool:
-        return self._is_in_range
-
-    @in_range.setter
-    def in_range(self, is_in_range: bool) -> None:
-        self._is_in_range = is_in_range
 
     @property
     def preconditions(self) -> dict:
@@ -56,15 +55,7 @@ class Action(ABC):
         self._effects = effects
 
     @abstractmethod
-    def is_done(self) -> bool:
-        pass
-
-    @abstractmethod
-    def requires_in_range(self) -> bool:
-        pass
-
-    @abstractmethod
-    def checkProcedural(self, agent: int) -> bool:
+    def checkProcedural(self) -> bool:
         pass
 
     @abstractmethod
@@ -75,10 +66,10 @@ class Node():
 
     parent: Node
     cost: int
-    state: set
+    state: WorldState
     action: Action
 
-    def __init__(self, parent: Node, cost: int, state: set, action: Action):
+    def __init__(self, parent: Node, cost: int, state: WorldState, action: Action):
         self.parent = parent
         self.cost = cost
         self.state = state
@@ -86,20 +77,27 @@ class Node():
 
 class Planner():
 
-    def plan(self, agent: int, actions: set, state: set, goal: set):
+    _actions = []
+    _world = None
 
-        for a in actions:
+    def __init__(self, actions: list, state: WorldState):
+        self._actions = actions
+        self._world = state
+
+    def plan(self, goal: WorldState) -> list:
+
+        for a in self._actions:
             a.do_reset()
 
         usable: set
-        for a in actions:
-            if a.checkProcedural(agent): usable.add(a)
+        for a in self._actions:
+            if a.checkProcedural(): usable.add(a)
 
         leaves: list
         result = list
         cheapest = None
-        start = Node(None, 0, state, None)
-        success = self.graph(start, leaves, actions, goal)
+        start = Node(None, 0, self._world, None)
+        success = self.graph(start, leaves, self._actions, goal)
 
         if not success: return None
 
@@ -114,18 +112,6 @@ class Planner():
 
         return result
 
-    def check_state(self, test: dict, state: dict) -> bool:
-
-        for t in test:
-            match = False
-            for s in state:
-                if s == t:
-                    match = True
-                    break
-            if not match:
-                return False
-        return True
-
     def graph(self, start: Node, leaves: list, actions: set, goal: set) -> bool:
         
         found = False
@@ -134,3 +120,7 @@ class Planner():
             pass
 
         return False
+
+    def clear(self):
+        pass
+
