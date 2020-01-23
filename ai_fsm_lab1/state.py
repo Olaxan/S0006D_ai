@@ -4,13 +4,16 @@ from abc import ABC, abstractmethod
 class StateContext(ABC):
 
     _id = 0
+    _name = "Agent"
+    _location = [0, 0]
     _state = None
 
-    def __init__(self, initial: State, id: int) -> None:
+    def __init__(self, initial: State, id: int, name: str):
         self._id = id
+        self._name = name
         self.changeState(initial)
 
-    def changeState(self, state: State) -> None:
+    def changeState(self, state: State):
         if (self._state != None):
             self._state.exit()
 
@@ -18,8 +21,32 @@ class StateContext(ABC):
         self._state.context = self
         self._state.enter()
 
-    def update(self) -> None:
+    def update(self):
         self._state.execute()
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name: str):
+        self._name = name
+
+    @property
+    def x(self):
+        return self._location[0]
+
+    @x.setter
+    def x(self, value):
+        self._location[0] = value
+
+    @property
+    def y(self):
+        return self._location[1]
+
+    @y.setter
+    def y(self, value):
+        self._location[1] = value
     
         
 class State(ABC):
@@ -31,18 +58,18 @@ class State(ABC):
         return self._context
 
     @context.setter
-    def context(self, context: StateContext) -> None:
+    def context(self, context: StateContext):
         self._context = context
 
-    @abstractmethod
+    def describe(self, *action):
+        print(self.context.name, "is", action)
+
     def enter(self):
-        print("Agent entering state")
+        pass
 
-    @abstractmethod
     def execute(self):
-        print("Agent update")
+        pass
 
-    @abstractmethod
     def exit(self):
-        print("Agent exiting state")
+        pass
 
