@@ -4,25 +4,36 @@ from utils import Clamped
 
 class Agent(StateContext):
 
-    money       = Clamped(0)
-    sleep       = Clamped(0, 0, 100)
-    hunger      = Clamped(10, 0, 50)
-    thirst      = Clamped(0, 0, 25)
-    social      = Clamped(25, 0, 50)
+    home:   str = None
+    work:   str = None
 
-    home = (0, 0)
-
-    def __init__(self, id: int, name: str, home: (int, int)):
-        super().__init__(IdleState(), id, name)
-        self.name = name
+    def __init__(self, name: str, home: str, work: str):
+        super().__init__(SleepState(), name)
         self.home = home
+        self.work = work
+        self.money  = 0
+        self.drunk  = Clamped(0, 10)
+        self.sleep  = Clamped(0, 10, 5)
+        self.hunger = Clamped(0, 5, 0)
+        self.thirst = Clamped(0, 5, 0)
+        self.social = Clamped(0, 10, 5)
+
+    def __del__(self):
+        print(self.name, "is dead")
 
     def update(self):
         super().update()
-        self.hunger.add()
-        self.thirst.add()
-        self.social.add()
-        self.sleep.add()
+        self.drunk.sub(1)
+
+    def start(self):
+        super().start()
+        self.location = self.world.get_location(self.home)
+
+    def say(self, phrase):
+        if self.drunk.is_min:
+            super().say(phrase)
+        else: 
+            print("%s: '*hic!* %s'" % (self.name, phrase))
 
 class AgentState(State):
 
@@ -34,80 +45,103 @@ class AgentState(State):
     def context(self, context: Agent):
         self._context = context
 
-class GotoState(AgentState):
-
-    _target = (0, 0)
-    _on_arrive: AgentState = IdleState()
-
-    def __init__(self, location: (int, int), on_arrive: AgentState):
-        self._on_arrive = on_arrive
-        self._target = location
-
-    def _has_arrived(self) -> bool:
-        return self._target[0] == self.context.x and self._target[1] == self.context.y
-
-    def enter(self):
-        if not self._has_arrived():
-            self.describe("moving to a new location:", self._target)
-
-    def update(self):
-
-        if self._has_arrived():
-            self.context.changeState(self._on_arrive)
-            return
-
-        if self._target[0] > self.context.x: self.context.x -= 1
-        elif self._target[0] < self.context.x: self.context.y += 1
-
-        if self._target[1] > self.context.y: self.context.y -= 1
-        elif self._target[1] < self.context.y: self.context.y += 1
-
 class IdleState(AgentState):
 
     def execute(self):
-        if randint(0, 100) == 1: self.describe("milling around")
+        if randint(0, 100) == 1: self.context.describe("milling around")
+
+class WorkState(AgentState):
+
+    state_name = "work"
+
+    def enter(self):
+        if self.context.is_at(self.context.work):
+            self.context.say("Dreading work today...")
+        else:
+            self.context.goto(self.context.work)
+
+    def exit(self):
+        self.context.say("No more of this!")
+
+    def execute(self):
+
+        self.context.money += 125
+        self.context.thirst.add(2)
+        self.context.sleep.add(2)
+
+        self.context.say("Ka-ching! Got %d:- now!" % self.context.money)
+
+        if self.context.sleep.is_max:
+            self.context.changeState(SleepState())
+
+        if self.context.thirst.is_max:
+            self.context.changeState(DrinkState())
 
 class SleepState(AgentState):
 
+    state_name = "some sleep"
+
     def enter(self):
-        self.describe("going to bed")
+        if self.context.is_at(self.context.home):
+            self.context.say("Time for a nap - I'm an agent who loves to snooze")
+        else:
+            self.context.goto(self.context.home)
 
     def exit(self):
-        self.describe("waking up")
+        self.context.describe("waking up")
 
     def execute(self):
 
-        if randint(0, 100) == 5: self.describe("fast asleep")
+        if randint(0, self.context.sleep.max) == 1: self.context.say("zZzzzZzz...")
 
-        self.context.sleep.subtract(3)
+        self.context.sleep.sub(2)
+        self.context.hunger.add(2)
         
-        if self.context.sleep == 0:
-            self.context.changeState(IdleState())
+        if self.context.sleep.is_min:
+            self.context.changeState(EatState())
 
 class EatState(AgentState):
 
+    state_name = "a bite"
+
     def enter(self):
-        self.describe("cooking something")
+        if self.context.is_at("dallas"):
+            self.context.say("I am hungry, I want some lasagna")
+        else:
+            self.context.goto("dallas")
 
     def exit(self):
-        self.describe("full!")
+        self.context.describe("full!")
 
     def execute(self):
-        self.context.hunger.subtract(5)
+
+        if randint(0, self.context.hunger.max) == 1: self.context.say("Crunch!")
         
-        if self.context.hunger == 0:
-            self.context.changeState(IdleState())
+        self.context.hunger.sub(2)
+        
+        if self.context.hunger.is_min:
+            self.context.changeState(WorkState())
 
 class DrinkState(AgentState):
 
+    state_name = "a drink"
+
     def enter(self):
-        self.describe("crackin' open a cold'un")
+        if self.context.is_at("travven"):
+            self.context.describe("crackin' open a cold'un")
+            self.context.money -= 30
+        else:
+            self.context.goto("travven")
 
     def exit(self):
-        self.describe("finishing his drink")
+        self.context.describe("finishing his drink")
 
     def execute(self):
-        self.context.thirst.subtract(5)
 
-        if self.context.thirst == 0:
-            self.context.changeState(IdleState())
+        if randint(0, self.context.thirst.max) == 1: self.context.say("Slurp!")
+        
+        self.context.thirst.sub(2)
+        self.context.drunk.add(3)
+        
+        if self.context.thirst.is_min:
+            self.context.changeState(WorkState())
