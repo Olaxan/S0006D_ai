@@ -1,107 +1,41 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
-class World:
-
-    _agents = {}
-    _locations = {}
-    _next_id = 0
-
-    def __init__(self, locations: dict = {}, agents: list = []):
-        self._locations = locations
-        for agent in agents:
-            agent.world = self
-            self.add_agent(agent)
-
-    def id_is_free(self, id: int):
-        return id not in self._agents
-
-    def add_agent(self, agent: StateContext) -> int:
-        agent.world = self
-        agent.id = self._next_id
-        agent.start()
-        self._agents[self._next_id] = agent
-        self._next_id += 1
-        return agent.id
-
-    def add_agents(self, *agents: StateContext):
-        for a in agents:
-            self.add_agent(a)
-
-    def remove_agent(self, id: int):
-        if id in self._agents: self._agents.pop(id)
-
-    def get_agent(self, id: int) -> StateContext:
-        return self._agents[id] if id in self._agents else None
-
-    def add_location(self, name: str, coordinates: (int, int)):
-        self._locations[name] = coordinates
-
-    def remove_location(self, name: str):
-        if name in self._locations: self._locations.pop(name)
-
-    def get_location(self, name: str) -> (int, int):
-        return self._locations[name] if name in self._locations else (0, 0)
-
-    def is_at(self, id: int, location: str) -> bool:
-        agent = self.get_agent(id)
-        if agent == None: return False
-        return agent.location == self._locations[location]
-
-    def update(self):
-        for agent in self._agents.values():
-            agent.update()
-
 class StateContext(ABC):
 
-    _id = 0
-    _location = [0, 0]
-    _name = "Agent"
-    _world = None
-    _state = None
+    _global_state:      State = None
+    _current_state:     State = None
+    _previous_state:    State = None
 
-    def __init__(self, initial: State, name: str):
+    def __init__(self, initial_state: State, global_state: State, name: str):
         self._name = name
-        self._state = initial # agent will be "activated" by world manager
+        self._current_state = initial_state
+        self._global_state = global_state
 
-    def changeState(self, state: State):
+    def change_state(self, state: State, do_exit: bool = True):
 
-        if self._state is not None and type(state) is not Goto:
-            self._state.exit()
+        self._previous_state = self._current_state
 
-        self._state = state
+        if self._current_state is not None and do_exit:
+            self._current_state.exit()
+        
+        self._current_state = state
         self.start()
 
+    def revert_state(self):
+        self.change_state(self._previous_state)
+
+    def is_in_state(self, state: State) -> bool:
+        return type(self._current_state) == type(state)
+
     def start(self):
-        if self._state is not None and self._world is not None:
-            self._state.context = self
-            self._state.enter()
+        if self._current_state is not None:
+            self._current_state.context = self
+            self._current_state.enter()
 
     def update(self):
-        self._state.execute()
-
-    def is_at(self, location: str) -> bool:
-        return self._world.is_at(self._id, location) if self._world != None else False
-
-    def goto(self, location: str):
-        current = self._state
-        target = self.world.get_location(location)
-        self.describe("going to %s for %s" % (location.capitalize(), current.state_name))
-        self.changeState(Goto(target, current))
-
-    def describe(self, action):
-        print(self.name, "is", action)
-
-    def say(self, phrase):
-        print("%s: '%s'" % (self.name, phrase))
-
-    @property
-    def world(self):
-        return self._world
-
-    @world.setter
-    def world(self, world: World):
-        self._world = world
+        if self._global_state is not None: self._global_state.execute()
+        if self._current_state is not None: self._current_state.execute()
 
     @property
     def name(self):
@@ -110,38 +44,6 @@ class StateContext(ABC):
     @name.setter
     def name(self, name: str):
         self._name = name
-
-    @property
-    def x(self):
-        return self._location[0]
-
-    @x.setter
-    def x(self, value):
-        self._location[0] = value
-
-    @property
-    def y(self):
-        return self._location[1]
-
-    @y.setter
-    def y(self, value):
-        self._location[1] = value
-
-    @property
-    def location(self):
-        return self._location
-
-    @location.setter
-    def location(self, location: [int, int]):
-        self._location = location
-
-    @property
-    def id(self):
-        return self._id
-
-    @id.setter
-    def id(self, id: int):
-        if self._world.id_is_free(id): self._id = id
         
 class State(ABC):
 
@@ -171,7 +73,7 @@ class Goto(State):
     _target = [0, 0]
     _on_arrive: None
 
-    def __init__(self, location: [int, int], on_arrive: State):
+    def __init__(self, location: [int, int], on_arrive: State = None):
         self._on_arrive = on_arrive
         self._target = location
 
@@ -181,7 +83,7 @@ class Goto(State):
     def execute(self):
 
         if self._has_arrived():
-            self.context.changeState(self._on_arrive)
+            self.context.change_state(self._on_arrive) if self._on_arrive is not None else self.context.revert_state()
             return
 
         if self._target[0] < self.context.x: self.context.x -= 1

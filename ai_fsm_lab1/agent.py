@@ -1,39 +1,85 @@
-from state import State, StateContext
+from state import State, StateContext, Goto
+from world import World
 from random import randint
 from utils import Clamped
 
 class Agent(StateContext):
 
+    _location = [0, 0]
+    _name = "Agent"
+    _world = None
+    _id = 0
+
     home:   str = None
     work:   str = None
 
-    def __init__(self, name: str, home: str, work: str):
-        super().__init__(SleepState(), name)
+    def __init__(self, world: World, name: str, home: str, work: str):
+        super().__init__(SleepState(), None, name)
+        self._world = world
+        self._id = self._world.register_agent(self)
+
         self.home = home
         self.work = work
+        
         self.money  = 0
-        self.drunk  = Clamped(0, 10)
         self.sleep  = Clamped(0, 10, 5)
         self.hunger = Clamped(0, 5, 0)
         self.thirst = Clamped(0, 5, 0)
         self.social = Clamped(0, 10, 5)
 
     def __del__(self):
-        print(self.name, "is dead")
-
-    def update(self):
-        super().update()
-        self.drunk.sub(1)
+        self.describe("dead")
 
     def start(self):
         super().start()
         self.location = self.world.get_location(self.home)
 
+    def is_at(self, location: str) -> bool:
+        return self._world.is_at(self, location)
+
+    def goto(self, location: str, on_arrive: State = None):
+        current = self._current_state
+        target = self.world.get_location(location)
+        self.describe("going to %s for %s" % (location.capitalize(), current.state_name))
+        self.change_state(Goto(target, on_arrive), False)
+
+    def describe(self, action):
+        print(self.name, "is", action)
+
     def say(self, phrase):
-        if self.drunk.is_min:
-            super().say(phrase)
-        else: 
-            print("%s: '*hic!* %s'" % (self.name, phrase))
+        print("%s: '%s'" % (self.name, phrase))
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def world(self):
+        return self._world
+
+    @property
+    def x(self):
+        return self._location[0]
+
+    @x.setter
+    def x(self, value):
+        self._location[0] = value
+
+    @property
+    def y(self):
+        return self._location[1]
+
+    @y.setter
+    def y(self, value):
+        self._location[1] = value
+
+    @property
+    def location(self):
+        return self._location
+
+    @location.setter
+    def location(self, location: [int, int]):
+        self._location = location
 
 class AgentState(State):
 
@@ -72,10 +118,10 @@ class WorkState(AgentState):
         self.context.say("Ka-ching! Got %d:- now!" % self.context.money)
 
         if self.context.sleep.is_max:
-            self.context.changeState(SleepState())
+            self.context.change_state(SleepState())
 
         if self.context.thirst.is_max:
-            self.context.changeState(DrinkState())
+            self.context.change_state(DrinkState())
 
 class SleepState(AgentState):
 
@@ -98,7 +144,7 @@ class SleepState(AgentState):
         self.context.hunger.add(2)
         
         if self.context.sleep.is_min:
-            self.context.changeState(EatState())
+            self.context.change_state(EatState())
 
 class EatState(AgentState):
 
@@ -120,7 +166,7 @@ class EatState(AgentState):
         self.context.hunger.sub(2)
         
         if self.context.hunger.is_min:
-            self.context.changeState(WorkState())
+            self.context.change_state(WorkState())
 
 class DrinkState(AgentState):
 
@@ -141,7 +187,7 @@ class DrinkState(AgentState):
         if randint(0, self.context.thirst.max) == 1: self.context.say("Slurp!")
         
         self.context.thirst.sub(2)
-        self.context.drunk.add(3)
+        #self.context.drunk.add(3)
         
         if self.context.thirst.is_min:
-            self.context.changeState(WorkState())
+            self.context.change_state(WorkState())

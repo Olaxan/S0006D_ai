@@ -1,6 +1,6 @@
 import sys, time
-from state import World
 from agent import Agent, IdleState
+from world import World
 
 if __name__ == "__main__":
 
@@ -15,10 +15,13 @@ if __name__ == "__main__":
     
     world = World(locations)
 
-    world.add_agents(
-        Agent("Henry", "staregatan", "coop"),
-        Agent("Lukas", "villagatan", "dallas")
-    )
+    agents = [
+        Agent(world, "Henry", "staregatan", "coop"),
+        Agent(world, "Lukas", "villagatan", "dallas")
+    ]
+
+    for agent in agents:
+        agent.start()
 
     while True:
         time.sleep(2)
