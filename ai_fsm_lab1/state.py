@@ -7,8 +7,7 @@ class StateContext(ABC):
     _current_state:     State = None
     _previous_state:    State = None
 
-    def __init__(self, initial_state: State, global_state: State, name: str):
-        self._name = name
+    def __init__(self, initial_state: State, global_state: State):
         self._current_state = initial_state
         self._global_state = global_state
 
@@ -23,6 +22,7 @@ class StateContext(ABC):
         self.start()
 
     def revert_state(self):
+        #print("reverting from %s to %s" % (self._current_state, self._previous_state))
         self.change_state(self._previous_state)
 
     def is_in_state(self, state: State) -> bool:
@@ -32,10 +32,18 @@ class StateContext(ABC):
         if self._current_state is not None:
             self._current_state.context = self
             self._current_state.enter()
+        if self._global_state is not None:
+            self._global_state.context = self
 
     def update(self):
         if self._global_state is not None: self._global_state.execute()
         if self._current_state is not None: self._current_state.execute()
+
+    def handle_message(self, message):
+        if self._current_state is not None and self._current_state.on_message(message):
+            return True
+        if self._global_state is not None and self._global_state.on_message(message):
+            return True
 
     @property
     def name(self):
@@ -58,6 +66,9 @@ class State(ABC):
     @context.setter
     def context(self, context: StateContext):
         self._context = context
+
+    def on_message(self, telegram) -> bool:
+        return False
 
     def enter(self):
         pass

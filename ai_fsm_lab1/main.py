@@ -1,5 +1,5 @@
 import sys, time
-from agent import Agent, IdleState
+from agent import Agent
 from world import World
 
 if __name__ == "__main__":
@@ -12,7 +12,7 @@ if __name__ == "__main__":
         "villagatan"    : [3, 2],
         "ltu"           : [4, 4]
     }
-    
+
     world = World(locations)
 
     agents = [

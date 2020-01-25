@@ -4,7 +4,7 @@ class Clamped:
     _min = 0
     _current = 0
 
-    def __init__(self, min, max, begin = 0):
+    def __init__(self, begin = 0, min = None, max = None):
         self._current = begin
         self._min = min
         self._max = max
@@ -32,6 +32,10 @@ class Clamped:
     @property
     def is_min(self):
         return self._current == self._min
+
+    @property
+    def current(self):
+        return self._current
 
     @property
     def max(self):

@@ -1,6 +1,7 @@
 from state import State, StateContext, Goto
-from world import World
 from random import randint
+from world import World
+from telegram import Telegram, MessageTypes
 from utils import Clamped
 
 class Agent(StateContext):
@@ -14,18 +15,21 @@ class Agent(StateContext):
     work:   str = None
 
     def __init__(self, world: World, name: str, home: str, work: str):
-        super().__init__(SleepState(), None, name)
+        super().__init__(SleepState(), GlobalState())
+        self._name = name
         self._world = world
         self._id = self._world.register_agent(self)
 
         self.home = home
         self.work = work
         
-        self.money  = 0
-        self.sleep  = Clamped(0, 10, 5)
-        self.hunger = Clamped(0, 5, 0)
-        self.thirst = Clamped(0, 5, 0)
-        self.social = Clamped(0, 10, 5)
+        self.money      = 0
+        self.drunk      = Clamped(0, 0)
+        self.sleep      = Clamped(5, 0, 20)
+        self.bladder    = Clamped(5, 0, 10)
+        self.hunger     = Clamped(0, 0, 5)
+        self.thirst     = Clamped(0, 0, 5)
+        self.social     = Clamped(5, 0, 10)
 
     def __del__(self):
         self.describe("dead")
@@ -38,16 +42,22 @@ class Agent(StateContext):
         return self._world.is_at(self, location)
 
     def goto(self, location: str, on_arrive: State = None):
-        current = self._current_state
+
+        if on_arrive is None: on_arrive = self._current_state
+
         target = self.world.get_location(location)
-        self.describe("going to %s for %s" % (location.capitalize(), current.state_name))
+        self.describe("going to %s for %s" % (location.capitalize(), on_arrive.state_name))
         self.change_state(Goto(target, on_arrive), False)
 
     def describe(self, action):
         print(self.name, "is", action)
 
     def say(self, phrase):
-        print("%s: '%s'" % (self.name, phrase))
+        if self.drunk.is_min:
+            print("%s: '%s'" % (self.name, phrase))
+        else:
+            print("%s: '*hic!* %s'" % (self.name, phrase))
+
 
     @property
     def id(self):
@@ -91,11 +101,6 @@ class AgentState(State):
     def context(self, context: Agent):
         self._context = context
 
-class IdleState(AgentState):
-
-    def execute(self):
-        if randint(0, 100) == 1: self.context.describe("milling around")
-
 class WorkState(AgentState):
 
     state_name = "work"
@@ -123,6 +128,12 @@ class WorkState(AgentState):
         if self.context.thirst.is_max:
             self.context.change_state(DrinkState())
 
+    def on_message(self, telegram: Telegram):
+        if telegram.message == MessageTypes.MSG_MEETING:
+            self.context.say("Ah, naw mate, sorry, can't meet right now, I'm at work!")
+            return True
+        return False
+
 class SleepState(AgentState):
 
     state_name = "some sleep"
@@ -146,6 +157,12 @@ class SleepState(AgentState):
         if self.context.sleep.is_min:
             self.context.change_state(EatState())
 
+    def on_message(self, telegram: Telegram):
+        if telegram.message == MessageTypes.MSG_MEETING:
+            self.context.describe("rolling over in his sleep")
+            return True
+        return False
+
 class EatState(AgentState):
 
     state_name = "a bite"
@@ -168,6 +185,13 @@ class EatState(AgentState):
         if self.context.hunger.is_min:
             self.context.change_state(WorkState())
 
+    def on_message(self, telegram: Telegram):
+
+        if telegram.message == MessageTypes.MSG_MEETING:
+            self.context.say("Fuck yeah! Where you at?")
+            return True
+        return False
+
 class DrinkState(AgentState):
 
     state_name = "a drink"
@@ -187,7 +211,48 @@ class DrinkState(AgentState):
         if randint(0, self.context.thirst.max) == 1: self.context.say("Slurp!")
         
         self.context.thirst.sub(2)
-        #self.context.drunk.add(3)
+        self.context.drunk.add(3)
+        self.context.bladder.add(1)
         
         if self.context.thirst.is_min:
             self.context.change_state(WorkState())
+
+    def on_message(self, telegram: Telegram):
+
+        if telegram.message == MessageTypes.MSG_MEETING:
+            self.context.say("You know it! Come on, I'm drinking alone!")
+            return True
+        return False
+
+class ToiletState(AgentState):
+
+    def enter(self):
+        self.context.say("Ooh, better hit the john!")
+
+    def exit(self):
+        self.context.say("That's better! Where were I?")
+
+    def execute(self):
+
+        if randint(0, self.context.bladder.max) == 1: self.context.say("No hands!")
+
+        self.context.bladder.sub(2)
+
+        if self.context.bladder.is_min:
+            self.context.revert_state()
+
+class GlobalState(AgentState):
+
+    def execute(self):
+        self.context.drunk.sub(1)
+        self.context.social.add(randint(0, 5) == 1)
+        self.context.bladder.add(randint(0, 5) == 1)
+
+        if self.context.bladder.is_max:
+            self.context.change_state(ToiletState())
+
+        if self.context.social.is_max:
+            self.context.say("Hey! Anyone wanna meet up or something?")
+            self.context.social.sub(randint(5, 10))
+            msg = Telegram(self.context.id, None, MessageTypes.MSG_MEETING)
+            self.context.world.dispatch(0, msg)
