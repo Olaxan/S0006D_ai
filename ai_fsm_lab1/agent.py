@@ -101,6 +101,15 @@ class AgentState(State):
     def context(self, context: Agent):
         self._context = context
 
+class SharedState(AgentState):
+
+    _agents = None
+    _state = None
+
+    def __init__(self, state: AgentState, *share_with):
+        self._agents = share_with
+        self._state = state
+
 class WorkState(AgentState):
 
     state_name = "work"
