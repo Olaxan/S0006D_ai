@@ -1,7 +1,13 @@
-from enum import Enum
+from enum import Enum, auto
 
 class MessageTypes(Enum):
-    MSG_MEETING = 1
+    MSG_MEETING             = auto()
+    MSG_MEETING_REPLY       = auto()
+    MSG_MEETING_CANCEL      = auto()
+    MSG_MEETING_LEAVING     = auto()
+    MSG_WAKEUP              = auto()
+    MSG_ARRIVAL             = auto()
+    MSG_DATE_OVER           = auto()
 
 class Telegram:
     

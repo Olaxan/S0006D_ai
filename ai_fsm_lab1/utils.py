@@ -52,5 +52,4 @@ class Clamped:
     @min.setter
     def min(self, min):
         self._min = min
-
     

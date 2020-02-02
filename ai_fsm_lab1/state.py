@@ -28,6 +28,9 @@ class StateContext(ABC):
     def is_in_state(self, state: State) -> bool:
         return type(self._current_state) == type(state)
 
+    def init(self):
+        pass
+
     def start(self):
         if self._current_state is not None:
             self._current_state.context = self
@@ -35,9 +38,9 @@ class StateContext(ABC):
         if self._global_state is not None:
             self._global_state.context = self
 
-    def update(self):
-        if self._global_state is not None: self._global_state.execute()
-        if self._current_state is not None: self._current_state.execute()
+    def update(self, step = 1):
+        if self._global_state is not None: self._global_state.execute(step)
+        if self._current_state is not None: self._current_state.execute(step)
 
     def handle_message(self, message):
         if self._current_state is not None and self._current_state.on_message(message):
@@ -52,12 +55,19 @@ class StateContext(ABC):
     @name.setter
     def name(self, name: str):
         self._name = name
+
+    @property
+    def state(self) -> State:
+        return self._current_state
         
 class State(ABC):
 
     _context = None
 
     state_name = "unknown reasons"
+    state_verb = "doing something"
+
+    ignore_global = False
 
     @property
     def context(self) -> StateContext:
@@ -73,32 +83,8 @@ class State(ABC):
     def enter(self):
         pass
 
-    def execute(self):
+    def execute(self, step):
         pass
 
     def exit(self):
         pass
-
-class Goto(State):
-
-    _target = [0, 0]
-    _on_arrive: None
-
-    def __init__(self, location: [int, int], on_arrive: State = None):
-        self._on_arrive = on_arrive
-        self._target = location
-
-    def _has_arrived(self) -> bool:
-        return self._target[0] == self.context.x and self._target[1] == self.context.y
-
-    def execute(self):
-
-        if self._has_arrived():
-            self.context.change_state(self._on_arrive) if self._on_arrive is not None else self.context.revert_state()
-            return
-
-        if self._target[0] < self.context.x: self.context.x -= 1
-        elif self._target[0] > self.context.x: self.context.x += 1
-
-        if self._target[1] < self.context.y: self.context.y -= 1
-        elif self._target[1] > self.context.y: self.context.y += 1

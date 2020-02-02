@@ -5,11 +5,13 @@ from world import World
 if __name__ == "__main__":
 
     locations = {
-        "travven"       : [0, 0],
+        "travven"       : [1, 1],
         "dallas"        : [3, 0],
         "coop"          : [5, 0],
         "staregatan"    : [2, 2],
         "villagatan"    : [3, 2],
+        "frögatan 154"  : [3, 3],
+        "frögatan 183"  : [3, 4],
         "ltu"           : [4, 4]
     }
 
@@ -17,12 +19,14 @@ if __name__ == "__main__":
 
     agents = [
         Agent(world, "Henry", "staregatan", "coop"),
-        Agent(world, "Lukas", "villagatan", "dallas")
+        Agent(world, "Lukas", "villagatan", "dallas"),
+        Agent(world, "Sahmon", "frögatan 183", "ltu"),
+        Agent(world, "Bulifer", "frögatan 154", "ltu")
     ]
 
     for agent in agents:
-        agent.start()
+        agent.init()
 
     while True:
-        time.sleep(2)
-        world.update()
+        time.sleep(0.2)
+        world.step_forward(0.25)
