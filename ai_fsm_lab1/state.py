@@ -50,14 +50,6 @@ class StateContext(ABC):
             return True
 
     @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, name: str):
-        self._name = name
-
-    @property
     def state(self) -> State:
         return self._current_state
         

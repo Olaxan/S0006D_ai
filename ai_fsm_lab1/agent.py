@@ -113,6 +113,14 @@ class Agent(StateContext):
     def location(self, location: [int, int]):
         self._location = location
 
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name: str):
+        self._name = name
+
 class AgentState(State):
 
     @property
