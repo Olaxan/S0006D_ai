@@ -21,7 +21,8 @@ if __name__ == "__main__":
         Agent(world, "Henry", "staregatan", "coop"),
         Agent(world, "Lukas", "villagatan", "dallas"),
         Agent(world, "Sahmon", "frögatan 183", "ltu"),
-        Agent(world, "Bulifer", "frögatan 154", "ltu")
+        Agent(world, "Bulifer", "frögatan 154", "ltu"),
+        Agent(world, "Jenny", "staregatan", "coop")
     ]
 
     for agent in agents:

@@ -63,7 +63,7 @@ class Agent(StateContext):
         eta = GotoState.estimate(self.location, target, self.speed)
 
         self.describe("going to {} for {} (ETA: {})".format(location.capitalize(), on_arrive.state_name, World.time_format_24(self.world.time + eta)))
-        self.change_state(GotoState(target, self.speed, on_arrive), False)
+        self.change_state(GotoState(target, self.speed, on_arrive), False, False)
 
     def describe(self, action):
         print("[{}] {} is {}".format(self.world.time_24, self.name, action))
@@ -147,8 +147,9 @@ class GotoState(AgentState):
         return self._target[0] == self.context.x and self._target[1] == self.context.y
 
     def exit(self):
-        msg = Telegram(self.context.id, None, MessageTypes.MSG_ARRIVAL, self.context.location)
-        self.context.world.dispatch(0, msg)
+        if self._has_arrived():
+            msg = Telegram(self.context.id, None, MessageTypes.MSG_ARRIVAL, self.context.location)
+            self.context.world.dispatch(0, msg)
 
     def execute(self, step):
 
@@ -165,6 +166,15 @@ class GotoState(AgentState):
         if delta_y != 0:
             sign_y = delta_y / abs(delta_y)
             self.context.y += max(delta_y, sign_y * self._speed * step) if sign_y < 0 else min(delta_y, sign_y * self._speed * step)
+
+    def on_message(self, telegram: Telegram):
+
+        if telegram.message == MessageTypes.MSG_MEETING:
+            self.context.say("Sorry, I'm on my way somewhere!")
+            reply_msg = Telegram(self.context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
+            self.context.world.dispatch(0, reply_msg)
+            return True
+        return False
 
 class GlobalState(AgentState):
 
@@ -183,22 +193,27 @@ class GlobalState(AgentState):
     def on_message(self, telegram: Telegram):
 
         if telegram.message == MessageTypes.MSG_MEETING:
-            eta = GotoState.estimate(self.context.location, self.context.world.get_location(telegram.data), self.context.speed)
-            sender = self.context.world.get_agent(telegram.sender_id)
+            if randint(0, 10) <= 3:
+                eta = GotoState.estimate(self.context.location, self.context.world.get_location(telegram.data), self.context.speed)
+                sender = self.context.world.get_agent(telegram.sender_id)
 
-            if self.context.location == sender.location:
-                self.context.say_to(sender, "I'm at {}, too! Hang on, let me come over".format(telegram.data.capitalize()))
+                if self.context.location == sender.location:
+                    self.context.say_to(sender, "I'm at {}, too! Hang on, let me come over".format(telegram.data.capitalize()))
+                else:
+                    self.context.say_to(sender, "You know it! I'm {} right now, but I'll be over in like {} minutes!".format(self.context.state.state_verb, int(60 * eta)))
+                    
+                reply = Telegram(self.context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, True)
+                self.context.world.dispatch(0, reply)
+                self.context.change_state(MeetingState(telegram.data), do_exit=False, revertable=False)
             else:
-                self.context.say_to(sender, "You know it! I'm {} right now, but I'll be over in like {} minutes!".format(self.context.state.state_verb, int(60 * eta)))
-                
-            reply = Telegram(self.context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, True)
-            self.context.world.dispatch(0, reply)
-            self.context.change_state(MeetingState(telegram.data))
+                self.context.say("Sorry, not feeling it at the moment")
+                reply = Telegram(self.context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
+                self.context.world.dispatch(0, reply)
 
         if telegram.message == MessageTypes.MSG_MEETING_REPLY:
             if telegram.data == True:
                 self.context.say("Sick. I'll be waiting for you!")
-                self.context.change_state(MeetingState(None), False)
+                self.context.change_state(MeetingState(None), do_exit=False, revertable=False)
             else:
                 self.context.say("No worries. See you some other time!")
 
@@ -361,6 +376,7 @@ class SleepState(AgentState):
             print("*BEEPBEEPBEEPBEEPBEEP*")
             self.context.say("Aarrghhlleblaarghl, already??")
             self.context.change_state(WorkState())
+            return True
         return False
 
 class EatState(AgentState):
@@ -447,7 +463,8 @@ class MeetingState(AgentState):
     state_verb = "meeting"
 
     _place = None
-    _friends = []
+    _time_to_leave = False
+
     _phrases = [
         ("Drinking wine is like looking into the eye of a duck","And sucking all the fluids... from its beak"),
         ("You've got something between your teeth","Oh, but you have something between your ears!"),
@@ -462,8 +479,9 @@ class MeetingState(AgentState):
     ]
 
     def __init__(self, place):
-        self._place = place
         self._friends = []
+        self._time_to_leave = False
+        self._place = place
 
     def enter(self):
         if self._place is not None:
@@ -475,43 +493,60 @@ class MeetingState(AgentState):
 
     def execute(self, step):
 
-        friend_count = len(self._friends)
+        if self._time_to_leave:
+            self.context.say("Seems everybody's left but me")
+            self.context.revert_state()
+            return
 
-        if friend_count > 0:
-            friend = self._friends[randint(0, friend_count - 1)]
-            phrase = self._phrases[randint(0, len(self._phrases) - 1)]
-            self.context.say_to(friend, phrase[0])
-            friend.say_to(self.context, phrase[1])
-            self.context.social.sub(2 * step)
-            friend.social.sub(2 * step)
+        if self.context.social.is_min:
+            self.context.say("Well, I should get going!")
+            leave_msg = Telegram(self.context.id, None, MessageTypes.MSG_MEETING_LEAVING)
+            self.context.world.dispatch(0, leave_msg)
+            self.context.revert_state()
+            return
 
-            if self.context.social.is_min:
-                self.context.say("Well, it's been fun, but I should get going!")
-                self.context.revert_state()
-                leave_msg = Telegram(self.context.id, None, MessageTypes.MSG_MEETING_LEAVING)
-                self.context.world.dispatch(0, leave_msg)
+        phrase = self._phrases[randint(0, len(self._phrases) - 1)]
+        self.context.say(phrase[0])
+        chat_msg = Telegram(self.context.id, None, MessageTypes.MSG_MEETING_CHAT, phrase)
+        self._time_to_leave = True
+        self.context.world.dispatch(0, chat_msg)
 
     def on_message(self, telegram: Telegram):
 
         agent = self.context.world.get_agent(telegram.sender_id)
+
+        if telegram.message == MessageTypes.MSG_MEETING_REPLY:
+            if telegram.data:
+                self.context.say("The more the merrier!")
+            else:
+                self.context.say("Some other time, then!")
+            return True
 
         if telegram.message == MessageTypes.MSG_MEETING_CANCEL:
             self.context.say("That's a shame. Catch you later, then!")
             self.context.revert_state()
             return True
 
-        if telegram.message == MessageTypes.MSG_ARRIVAL and telegram.data == self.context.location:
-            self.context.say("Hey {}! Glad you could make it".format(agent.name))
-            self._friends.append(agent)
+        if telegram.message == MessageTypes.MSG_MEETING_CHAT and self.context.location == self.context.world.get_location(self._place):
+            self.context.social.sub(2)
+            self.context.say_to(agent, telegram.data[1])
+            reply_msg = Telegram(self.context.id, telegram.sender_id, MessageTypes.MSG_MEETING_CHAT_REPLY)
+            self.context.world.dispatch(0, reply_msg)
+            self._time_to_leave = False
             return True
 
-        if telegram.message == MessageTypes.MSG_MEETING_LEAVING:
-            self.context.say_to(agent, "It's been fun, see you around!")
-            if agent in self._friends:
-                self._friends.remove(agent)
-            if len(self._friends) == 0:
-                self.context.say("Well, guess I should get going as well...")
-                self.context.revert_state()
+        if telegram.message == MessageTypes.MSG_MEETING_CHAT_REPLY:
+            self.context.social.sub(2)
+            self._time_to_leave = False
+
+        if telegram.message == MessageTypes.MSG_ARRIVAL and telegram.data == self.context.location:
+            self.context.say("Hey {}! Glad you could make it".format(agent.name))
             return True
+
+        if telegram.message == MessageTypes.MSG_MEETING_LEAVING and agent.location == self.context.location:
+            self.context.say_to(agent, "It's been fun, see you around!")
+            return True
+
+        return False
 
 

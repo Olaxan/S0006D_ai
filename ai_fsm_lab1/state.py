@@ -11,9 +11,10 @@ class StateContext(ABC):
         self._current_state = initial_state
         self._global_state = global_state
 
-    def change_state(self, state: State, do_exit: bool = True):
+    def change_state(self, state: State, do_exit: bool = True, revertable = True):
 
-        self._previous_state = self._current_state
+        if revertable:
+            self._previous_state = self._current_state
 
         if self._current_state is not None and do_exit:
             self._current_state.exit()
