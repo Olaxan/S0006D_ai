@@ -445,7 +445,7 @@ class EatState(AgentState):
 
     def enter(self, context):
         if context.is_at("dallas"):
-            context.describe("Ordering a plate of kebab ({}:-)".format(self.cost))
+            context.describe("ordering a plate of kebab ({}:-)".format(self.cost))
             context.money -= self.cost
         else:
             context.goto("dallas")
