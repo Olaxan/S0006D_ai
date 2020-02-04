@@ -109,7 +109,7 @@ class World:
     def step_forward(self, step = 1):
 
         if self.time < step:
-            print(" ===[ Day {} ]======================================================= ".format(int(self._time // 24)))
+            print("\n ===[ Day {} ]======================================================= ".format(int(self._time // 24)))
 
         if self._time % step == 0:
             print()
@@ -130,7 +130,8 @@ class World:
                 if agent.id is not telegram.sender_id: agents.append(agent)
         else:
             if type(telegram.receiver_id) is int:
-                agents.append(self.get_agent(telegram.receiver_id))
+                agent = self.get_agent(telegram.receiver_id)
+                if agent is not None: agents.append(agent)
             else:
                 agents = self.get_agents(*telegram.receiver_id)
 

@@ -36,7 +36,7 @@ class Agent(StateContext):
         self.work = work
         self.speed = randint(3, 5)
         
-        self.money   = 0
+        self.money   = randint(2500, 10000)
         self.drunk   = Clamped(0, 0)
         self.sleep   = Clamped(7, 0, 8)
         self.bladder = Clamped(randint(0, 5), 0, 10)
@@ -193,10 +193,12 @@ class GotoState(AgentState):
 
     def on_message(self, context, telegram: Telegram):
 
+        sender = context.world.get_agent(telegram.sender_id)
+
         # Deny meeting messages while walking, just to avoid issues when "blipping" states several times
         # Might be removed in the future
         if telegram.message == MessageTypes.MSG_MEETING:
-            context.say(choice(self.meeting_refuse))
+            context.say_to(sender, choice(self.meeting_refuse))
             reply_msg = Telegram(context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
             context.world.dispatch(reply_msg)
             return True
@@ -223,7 +225,8 @@ class SharedState(AgentState):
         agent.change_state(self, do_exit=do_exit)
 
     def leave_state(self, agent):
-        self._party.remove(agent)
+        if agent in self._party:
+            self._party.remove(agent)
         agent.revert_state()
 
 class GlobalState(AgentState):
@@ -265,7 +268,7 @@ class GlobalState(AgentState):
         context.social.add((randint(0, 5) == 1) * step)
         context.bladder.add((randint(0, 5) == 1) * step)
 
-        if context.world.time % 240 == 0:
+        if (context.world.time - 24) % 720 == 0:
             context.describe("paying his rent ({}:-)".format(self.rent))
             context.money -= self.rent
 
@@ -412,9 +415,11 @@ class WorkState(AgentState):
 
     def on_message(self, context, telegram: Telegram):
 
+        sender = context.world.get_agent(telegram.sender_id)
+
         # Deny meeting requests on account of being at work
         if telegram.message == MessageTypes.MSG_MEETING:
-            context.say(choice(self.meeting_refuse))
+            context.say_to(sender, choice(self.meeting_refuse))
             reply = Telegram(context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
             context.world.dispatch(reply)
             return True
@@ -840,7 +845,7 @@ class MeetingState(SharedState):
             return
 
         # If agent is socially satisfied, leave the group and broadcast your departure
-        if context.social.is_min:
+        if context.social.is_min and self.host_id is not context.id:
             context.say(choice(self._leave_group))
             leave_msg = Telegram(context.id, self.host_id, MessageTypes.MSG_MEETING_LEAVING)
             context.world.dispatch(leave_msg)
@@ -893,7 +898,7 @@ class MeetingState(SharedState):
             return True
 
         # Say goodbye to departing members, and return to previous state if now alone
-        if telegram.message == MessageTypes.MSG_MEETING_LEAVING and sender.is_near(context):
+        if telegram.message == MessageTypes.MSG_MEETING_LEAVING and sender in self._party:
             if self.count == 1:
                 context.say(choice(self._disband_group))
                 self.leave_state(context)

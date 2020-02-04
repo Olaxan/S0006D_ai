@@ -29,5 +29,5 @@ if __name__ == "__main__":
         agent.start()
 
     while True:
-        time.sleep(0.2)
+        time.sleep(0.5)
         world.step_forward(0.25)
