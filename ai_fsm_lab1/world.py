@@ -16,7 +16,7 @@ class World:
         self._messages = []
         self._time = 0
 
-    # Returns the time wrapped to 24 hours
+    # Returns the time as an hour decimal wrapped to 24 hours
     @property
     def time(self):
         return ((self._time % 24) + 24) % 24
@@ -107,13 +107,18 @@ class World:
 
     # Move the world forward a step of the specified size, update all agents
     def step_forward(self, step = 1):
+
+        if self.time < step:
+            print(" ===[ Day {} ]======================================================= ".format(int(self._time // 24)))
+
+        if self._time % 1 == 0:
+            print()
+
         self._time += step
         self._dispatch_delayed()
 
         for agent in self._agents.values():
             agent.update(step)
-
-        print()
 
     # Dispatch a message with optional delay
     def dispatch(self, telegram: Telegram, delay = 0):

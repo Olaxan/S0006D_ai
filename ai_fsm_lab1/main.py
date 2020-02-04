@@ -8,8 +8,8 @@ if __name__ == "__main__":
         "travven"       : [1, 1],
         "dallas"        : [3, 0],
         "coop"          : [5, 0],
-        "staregatan"    : [2, 2],
-        "villagatan"    : [3, 2],
+        "brännarvägen"    : [2, 2],
+        "morö backe"    : [3, 2],
         "frögatan 154"  : [3, 3],
         "frögatan 183"  : [3, 4],
         "ltu"           : [4, 4]
@@ -18,11 +18,11 @@ if __name__ == "__main__":
     world = World(locations)
 
     agents = [
-        Agent(world, "Henry", "staregatan", "coop"),
-        Agent(world, "Lukas", "villagatan", "dallas"),
+        Agent(world, "Semlo", "brännarvägen", "coop"),
+        Agent(world, "Lukas", "morö backe", "dallas"),
         Agent(world, "Sahmon", "frögatan 183", "ltu"),
-        Agent(world, "Bulifer", "frögatan 154", "ltu"),
-        Agent(world, "Jenny", "staregatan", "coop")
+        Agent(world, "Spenus", "frögatan 154", "ltu"),
+        Agent(world, "Gurke", "brännarvägen", "coop")
     ]
 
     for agent in agents:
