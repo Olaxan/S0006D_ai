@@ -1,7 +1,7 @@
 import copy
 
 from state import State, StateContext
-from random import randint, seed
+from random import randint, seed, choice
 from world import World
 from telegram import Telegram, MessageTypes
 from utils import Clamped
@@ -148,6 +148,13 @@ class GotoState(AgentState):
     state_name = "a walk"
     state_verb = "walking"
 
+    meeting_refuse = [
+        "Sorry, I'm on my way somewhere!",
+        "No can do, sorry!",
+        "Busy unfortunately",
+        "Maybe some other day?",
+        "Ah, I'd love to, but try me again in a few hours"
+    ]
     
     @staticmethod  # Estimate the time it will take to move to a new location in a straight line
     def estimate(location, target, speed):
@@ -189,7 +196,7 @@ class GotoState(AgentState):
         # Deny meeting messages while walking, just to avoid issues when "blipping" states several times
         # Might be removed in the future
         if telegram.message == MessageTypes.MSG_MEETING:
-            context.say("Sorry, I'm on my way somewhere!")
+            context.say(choice(self.meeting_refuse))
             reply_msg = Telegram(context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
             context.world.dispatch(reply_msg)
             return True
@@ -223,6 +230,36 @@ class GlobalState(AgentState):
 
     rent = 2500
 
+    meeting_same_location = [
+        "I'm already at {}, can't you see me? Hang on!",
+        "I'm at {}, too! Hang on, let me come over",
+        "At {}? But I'm already here! Hey!",
+        "Well well well, having a {}-day, are we?"
+    ]
+
+    meeting_other_location = [
+        "You know it! I'm {0} right now, but I'll be over in like {1} minutes!",
+        "Sure! I'm about {1} minutes away, {0} right now",
+        "Be there soon! I'm {0}, should be there in about {1}"
+    ]
+
+    meeting_refuse = [
+        "Nah man, I'm knackered!",
+        "Can't be arsed at the moment, sorry",
+        "Have to take a rain-check on that!",
+        "Sorry, not feeling it at the moment",
+        "Oooh, can't work that into my schedule, sorry!"
+    ]
+
+    greetings = [
+        "Ahoy hoy, {}!",
+        "Good to see you, {}",
+        "If it isn't {}",
+        "Fancy seeing you here, {}!",
+        "'aight, {}?",
+        "Hey {}!"
+    ]
+
     def execute(self, context, step):
         context.drunk.sub(1 * step)
         context.social.add((randint(0, 5) == 1) * step)
@@ -246,21 +283,21 @@ class GlobalState(AgentState):
                 eta = GotoState.estimate(context.location, context.world.get_location(telegram.data), context.speed)
 
                 if context.location == sender.location:
-                    context.say_to(sender, "I'm at {}, too! Hang on, let me come over".format(telegram.data.place.capitalize()))
+                    context.say_to(sender, choice(self.meeting_same_location).format(telegram.data.place.capitalize()))
                 else:
-                    context.say_to(sender, "You know it! I'm {} right now, but I'll be over in like {} minutes!".format(context.state.state_verb, int(60 * eta)))
+                    context.say_to(sender, choice(self.meeting_other_location).format(context.state.state_verb, int(60 * eta)))
                     
                 reply_msg = Telegram(context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, True)
                 context.world.dispatch(reply_msg)
                 telegram.data.join_state(context)
             else:
-                context.say("Sorry, not feeling it at the moment")
+                context.say(choice(self.meeting_refuse))
                 reply_msg = Telegram(context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
                 context.world.dispatch(reply_msg)
 
         # Chance to greet agents arriving to the same location
         if telegram.message == MessageTypes.MSG_ARRIVAL and telegram.data == context.location and randint(0, 4) == 1:
-            context.say_to(sender, "Hey {}!".format(sender.name))
+            context.say_to(sender, choice(self.greetings).format(sender.name))
 
 # Work between start and end hours, giving the agent money in the process
 # Has specialized blip states for managing other needs while at work
@@ -272,23 +309,80 @@ class WorkState(AgentState):
     end_hour = 17
     pay = 120
 
+    running_late = [
+        "Late again...",
+        "Should've set my alarm earlier",
+        "Boss is gonna kill me",
+        "Good thing nobody sees me arriving this late...",
+        "Good grief, already so late?",
+        "Oh, running a bit late..."
+    ]
+
+    starting_work = [
+        "Back to running in the hamster wheel",
+        "Another day, another Swedish Krona",
+        "Hope today won't be too busy",
+        "Shit, where's my work ID?",
+        "God, I hate this job",
+        "Feeling pretty good about working today!",
+        "Dreading having to work, today..."
+    ]
+
+    returning_work = [
+        "Well, back at it",
+        "Break's over, I suppose",
+        "Alright, alright, I'm working...",
+        "Hope the rest of the day goes quickly"
+    ]
+
+    stopping_work = [
+        "Finally!",
+        "Hooray!",
+        "I'm out!",
+        "Thank god that's done with",
+        "Today went by like a flash!",
+        "Longest day of my life..."
+    ]
+
+    hours_left = [
+        "Just {} hours left...",
+        "{} hours... Christ",
+        "That's {} more hours, then",
+        "Not too long left, just {} hours",
+        "{} hours! Has the clock stopped?",
+    ]
+
+    earn_money = [
+        "Ka-ching! Got {}:- now!",
+        "Looks like I have {}:- in my account",
+        "{}:-! I'll have that boat in no-time",
+        "Sweet, up to {}:-"
+    ]
+
+    meeting_refuse = [
+        "Ah, naw mate, sorry, can't meet right now, I'm at work!",
+        "I'd love to, but I'm at work",
+        "Aren't you at work?",
+        "I'm working, maybe afterwards if you're still there!"
+    ]
+
     def enter(self, context):
         if context.is_at(context.work):
             if context.world.hour_24 <= self.start_hour:
                 if context.world.time > self.start_hour:
-                    context.say("Oh, running a bit late...")
+                    context.say(choice(self.running_late))
                 else:
-                    context.say("Back in the hamster wheel")
+                    context.say(choice(self.starting_work))
             else:
-                context.say("Well, back at it")
+                context.say(choice(self.returning_work))
         else:
             context.goto(context.work)
 
     def exit(self, context):
         if context.world.hour_24 >= self.end_hour:
-            context.say("Finally!")
+            context.say(choice(self.stopping_work))
         else:
-            context.say("Just {0} hours left...".format(self.end_hour - context.world.hour_24))
+            context.say(choice(self.hours_left).format(self.end_hour - context.world.hour_24))
 
     def execute(self, context, step):
 
@@ -298,7 +392,7 @@ class WorkState(AgentState):
         context.hunger.add(1 * step)
 
         if randint(0, int(self.end_hour - self.start_hour)) == 1:
-            context.say("Ka-ching! Got {}:- now!".format(context.money))
+            context.say(choice(self.earn_money).format(context.money))
 
         if context.world.hour_24 >= self.end_hour:
             context.change_state(EatState())
@@ -320,7 +414,7 @@ class WorkState(AgentState):
 
         # Deny meeting requests on account of being at work
         if telegram.message == MessageTypes.MSG_MEETING:
-            context.say("Ah, naw mate, sorry, can't meet right now, I'm at work!")
+            context.say(choice(self.meeting_refuse))
             reply = Telegram(context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
             context.world.dispatch(reply)
             return True
@@ -404,12 +498,58 @@ class SleepState(AgentState):
     state_name = "some sleep"
     state_verb = "sleeping"
 
+    starting_sleep = [
+        "Time for a nap - I'm an agent who loves to snooze",
+        "God, I'm dead tired",
+        "Aaah, I've been waiting for this all day",
+        "To dreamland I go!",
+        "I'm knackered!",
+        "I've never been so tired in my life!"
+    ]
+
+    set_alarm = [
+        "Lessee, I have to wake up at around... {}!",
+        "Setting an alarm for {}",
+        "{}! Too early!",
+        "I'll have to wake up at {} if I want to make it in time",
+        "{} should be plenty of time",
+        "Hmmm, I'll set the alarm to {}"
+    ]
+
+    sleeping = [
+        "ZzzZzzZ...",
+        "ZzzZzzZzzzzzz!",
+        "ZzzzzZzzzZzZZZz...",
+        "*SNORK!*",
+        "*Yawn*",
+        "Ahghhzzzzzz..."
+    ]
+
+    stopping_sleep = [
+        "Aarrghhlleblaarghl, already??",
+        "Nooo, I was having such a nice dream!",
+        "What, already morning?",
+        "I barely slept at all...",
+        "Wow, I feel great!",
+        "Bloody birds, woke me up...",
+        "Gonna make a million, never work again...",
+        "*YAAAAWN*"
+    ]
+
+    alarm = [
+        "*BEEP BEEP BEEP BEEP BEEP*",
+        "*WAKE UP! GRAB THE BRUSH AND PUT ON A LITTLE MAKEUP!*",
+        "*Riiiiiiiiiing!*",
+        "*Beepity beepity beep!*",
+        "*Good morning everyone! Radio 4 here with the weather...*"
+    ]
+
     def enter(self, context):
         if context.is_at(context.home):
             # Dispatch delayed message to self in order to wake up in time for work
             wakeup_time = WorkState.start_hour - GotoState.estimate(context.location, context.world.get_location(context.work), context.speed) - 0.25
-            context.say("Time for a nap - I'm an agent who loves to snooze")
-            context.say("Lessee, I have to wake up at around... {0}!".format(World.time_format_24(wakeup_time)))
+            context.say(choice(self.starting_sleep))
+            context.say(choice(self.set_alarm).format(World.time_format_24(wakeup_time)))
             alarm = Telegram(context.id, context.id, MessageTypes.MSG_WAKEUP)
             context.world.dispatch_scheduled(wakeup_time, alarm)
         else:
@@ -419,7 +559,7 @@ class SleepState(AgentState):
         context.describe("waking up")
 
     def execute(self, context, step):
-        if randint(0, context.sleep.max) == 1: context.say("zZzzzZzz...")
+        if randint(0, context.sleep.max) == 1: context.say(choice(self.sleeping))
         context.sleep.sub(step)
 
     def on_message(self, context, telegram: Telegram):
@@ -427,8 +567,8 @@ class SleepState(AgentState):
             context.describe("briefly awoken by his phone")
             return True
         if telegram.message == MessageTypes.MSG_WAKEUP:
-            print("*BEEPBEEPBEEPBEEPBEEP*")
-            context.say("Aarrghhlleblaarghl, already??")
+            print(choice(self.alarm))
+            context.say(choice(self.stopping_sleep))
             context.change_state(WorkState())
             return True
         return False
@@ -443,10 +583,29 @@ class EatState(AgentState):
 
     has_invited = False
 
+    food_items = [
+        ("plate of kebab", 80),
+        ("pizza", 70),
+        ("small cheese burger", 55),
+        ("box of fries", 40),
+        ("kebabrulle", 79)
+    ]
+
+    meeting_invite = [
+        "Anyone wanna meet up at Dallas?",
+        "Hey, anyone in the mood for some Dallas?",
+        "Yo, come get some dinner with me!",
+        "Anyone wanna do someting?",
+        "Anybody fancy some kebab?"
+    ]
+
     def enter(self, context):
+
+        order = choice(self.food_items)
+
         if context.is_at("dallas"):
-            context.describe("ordering a plate of kebab ({}:-)".format(self.cost))
-            context.money -= self.cost
+            context.describe("ordering a {} ({}:-)".format(order[0], order[1]))
+            context.money -= order[1]
         else:
             context.goto("dallas")
 
@@ -466,7 +625,7 @@ class EatState(AgentState):
         # If feeling lonely, call for friends to join
         if context.social.is_max and not self.has_invited:
             self.has_invited = True
-            context.say("Anyone wanna meet up at Dallas?")
+            context.say(choice(self.meeting_invite))
             meeting = MeetingState("dallas")
             meeting.join_state(context, do_exit=False)
 
@@ -478,16 +637,35 @@ class DrinkState(AgentState):
 
     has_invited = False
 
+    beverages = [
+        ("getting themselves a Sam Adams", 40),
+        ("ordering a Budvar", 30),
+        ("cracking open a lager", 45),
+        ("getting a drink", 50),
+        ("sipping on a whiskey", 60),
+        ("having a gin-tonic", 50)
+    ]
+
+    meeting_invite = [
+        "Hey guys! Come have a drink with me!",
+        "Anyone wanna join me at Travven?",
+        "Anybody coming to Travven?",
+        "Hey, after-work?!",
+        "Yo yo, come join me for a drink!",
+        "Anyone free for a drink?",
+        "Buy you a beer if you come to Travven"
+    ]
+
     def enter(self, context):
         if context.is_at("travven"):
-            cost = randint(30, 60)
-            context.describe("crackin' open a cold'un ({}:-)".format(cost))
-            context.money -= cost
+            order = choice(self.beverages)
+            context.describe("{} ({}:-)".format(order[0], order[1]))
+            context.money -= order[1]
         else:
             context.goto("travven")
 
     def exit(self, context):
-        context.describe("finishing his drink")
+        context.describe("finishing their drink")
 
     def execute(self, context, step):
 
@@ -500,7 +678,7 @@ class DrinkState(AgentState):
         # If feeling lonely, call for friends to join you
         if context.social.is_max and not self.has_invited:
             self.has_invited = True
-            context.say("Hey guys! Come have a drink with me!")
+            context.say(choice(self.meeting_invite))
             meeting = MeetingState("travven")
             meeting.join_state(context, do_exit=False)
 
@@ -511,11 +689,29 @@ class DrinkState(AgentState):
 # Blip state for going to bathroom
 class ToiletState(AgentState):
 
+    enter_bathroom = [
+        "Ooh, better hit the john!",
+        "I'm burstin'!",
+        "Would you excuse me for one second?",
+        "Be right back, just gotta take a leak",
+        "Need to piss!",
+        "Can't hold it in any longer!"
+    ]
+
+    exit_bathroom = [
+        "That's better! Where were I?",
+        "Ahhh... Back to business",
+        "Back to whatever I was doing!",
+        "God I love going to the bathroom",
+        "That was one nasty urinal",
+        "That hit the spot"
+    ]
+
     def enter(self, context):
-        context.say("Ooh, better hit the john!")
+        context.say(choice(self.enter_bathroom))
 
     def exit(self, context):
-        context.say("That's better! Where were I?")
+        context.say(choice(self.exit_bathroom))
 
     def execute(self, context, step):
 
@@ -527,6 +723,8 @@ class MeetingState(SharedState):
 
     state_name = "a meeting"
     state_verb = "meeting"
+
+    ignore_global = True
 
     _place = None
     _invitations = 0
@@ -543,6 +741,76 @@ class MeetingState(SharedState):
         ("God, my tooth hurts!","Go see a dentist, then"),
         ("I love art - especially late... art","I like how the cow is looking off the side of the painting"),
         ("I've been playing a lot of INFRA lately","I don't want to hear another word about INFRA")
+    ]
+
+    _disband_group = [
+        "Oh, well...",
+        "I'll get going, then",
+        "Back to business...",
+        "It's getting late anyway",
+        "*Yawn*"
+    ]
+
+    _leave_group = [
+        "I really should get going!",
+        "It's been a blast, but I need to leave",
+        "Well, I'm outtahere, see you!",
+        "Getting up early tomorrow, peace!",
+        "It's that late already?! I need to leave!",
+        "Been great seeing you, bye!"
+    ]
+
+    _meeting_refuse = [
+        "Sorry, I'm already with some friends!",
+        "Nah, we're a crowd down here - join us if you want!",
+        "Already with some mates! Come over here instead!",
+        "We're like, a bunch of people already",
+        "Ah, busy at the moment, sorry!",
+        "Oh, maybe after this!"
+    ]
+
+    _meeting_accepted_first = [
+        "Fun! Be waiting for you",
+        "Sick! I'll be waiting",
+        "Hurry!",
+        "See you in a bit!",
+        "Sweet, catch you in a while then",
+        "Eyyyyy!"
+    ]
+
+    _meeting_accepted_multi = [
+        "The more the merrier!",
+        "Great, come join us!",
+        "Awesome! We're all waiting for you!",
+        "We'll save a seat for you!"
+    ]
+
+    _meeting_refused = [
+        "Some other time, then!",
+        "Ah, gotcha",
+        "That's a shame, later then!",
+        "No worries, see you some other time",
+        "Understandable! See you around!",
+        "Aw man! Catch you later, then!"
+    ]
+
+    _meeting_welcome = [
+        "Hey {}! Glad you could make it",
+        "The man, the myth, the legend, {}!",
+        "So good to see you, {}!",
+        "Glad you could join us, {}!",
+        "Eyo, {}!",
+        "Hi, {}!",
+        "Great to see you, {}!"
+    ]
+
+    _meeting_goodbye = [
+        "It's been fun, see you around!",
+        "Goodbye!",
+        "It's been a blast! See you!",
+        "See you later, alligator!",
+        "Bye, bye!",
+        "Have a good one!"
     ]
 
     @property
@@ -567,13 +835,13 @@ class MeetingState(SharedState):
 
         # If agent is alone in group after receiving all replies from all, leave the group
         if self._replies >= self._invitations and self.count == 1:
-            context.say("Oh, well...")
+            context.say(choice(self._disband_group))
             self.leave_state(context)
             return
 
         # If agent is socially satisfied, leave the group and broadcast your departure
         if context.social.is_min:
-            context.say("I really should get going!")
+            context.say(choice(self._leave_group))
             leave_msg = Telegram(context.id, self.host_id, MessageTypes.MSG_MEETING_LEAVING)
             context.world.dispatch(leave_msg)
             self.leave_state(context)
@@ -596,7 +864,7 @@ class MeetingState(SharedState):
 
         # Decline meeting invitations on account of already being with friends
         if telegram.message == MessageTypes.MSG_MEETING:
-            context.say_to(sender, "Sorry, I'm already with some friends!")
+            context.say_to(sender, choice(self._meeting_refuse))
             reply_msg = Telegram(context.id, sender.id, MessageTypes.MSG_MEETING_REPLY, False)
             context.world.dispatch(reply_msg)
             return True
@@ -606,31 +874,31 @@ class MeetingState(SharedState):
             self._replies += 1
             if telegram.data == True:
                 if self.count == 1:
-                    context.say("Sick! I'll be waiting")
+                    context.say(choice(self._meeting_accepted_first))
                 else:
-                    context.say("The more the merrier!")
+                    context.say(choice(self._meeting_accepted_multi))
             else: 
-                context.say("Some other time, then!")
+                context.say(choice(self._meeting_refused))
             return True
 
-        # Remove cancelled invitations from meeting
+        # Remove cancelled invitations
         if telegram.message == MessageTypes.MSG_MEETING_CANCEL:
             self._invitations -= 1
-            context.say_to(sender, "That's a shame. Catch you later, then!")
+            context.say_to(sender, choice(self._meeting_refused))
             return True
 
         # Greet new arrivals to the group
         if telegram.message == MessageTypes.MSG_ARRIVAL and telegram.data == context.location and sender in self._party:
-            context.say_to(sender, "Hey {}! Glad you could make it".format(sender.name))
+            context.say_to(sender, choice(self._meeting_welcome).format(sender.name))
             return True
 
         # Say goodbye to departing members, and return to previous state if now alone
         if telegram.message == MessageTypes.MSG_MEETING_LEAVING and sender.is_near(context):
             if self.count == 1:
-                context.say("Well, guess I should get going as well...")
+                context.say(choice(self._disband_group))
                 self.leave_state(context)
             else:
-                context.say_to(sender, "It's been fun, see you around!")
+                context.say_to(sender, choice(self._meeting_goodbye))
             return True
 
         return False

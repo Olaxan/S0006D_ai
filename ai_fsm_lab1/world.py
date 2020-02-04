@@ -111,7 +111,7 @@ class World:
         if self.time < step:
             print(" ===[ Day {} ]======================================================= ".format(int(self._time // 24)))
 
-        if self._time % 1 == 0:
+        if self._time % step == 0:
             print()
 
         self._time += step
