@@ -47,12 +47,13 @@ class World:
     def _dispatch_delayed(self):
         for message in self._messages:
             if self._time >= message.dispatch_time:
-                self.dispatch(0, message)
+                self.dispatch(message)
                 self._messages.remove(message)
 
     def register_agent(self, agent) -> int:
         self._agents[self._next_id] = agent
         self._next_id += 1
+        agent.init()
         return self._next_id - 1
 
     def remove_agent(self, id: int):
@@ -94,7 +95,7 @@ class World:
 
         print()
 
-    def dispatch(self, delay, telegram: Telegram):
+    def dispatch(self, telegram: Telegram, delay = 0):
 
         agents = []
 
@@ -110,18 +111,18 @@ class World:
         if delay <= 0:
             for agent in agents:
                 agent.handle_message(telegram)
+
+            #print("Message sent to {} agents".format(len(agents)))
+            return len(agents)
         else:
             telegram.dispatch_time = self._time + delay
             self._messages.append(telegram)
-
-        #print("Message sent to %d recipients" % (len(agents)))
+            return 0
 
     def dispatch_scheduled(self, time, telegram: Telegram):
         if time < self.time:
             time += (24 - self.time)
-            #print("[{}] adding {} to reach {}".format(self.time, 24 - self.time, time))
         else:
             time -= self.time
 
-        self.dispatch(time, telegram)
-        #print("Message delayed by {}".format(time))
+        self.dispatch(telegram, time)

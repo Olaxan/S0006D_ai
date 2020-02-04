@@ -5,11 +5,8 @@ class MessageTypes(Enum):
     MSG_MEETING_REPLY       = auto()
     MSG_MEETING_CANCEL      = auto()
     MSG_MEETING_LEAVING     = auto()
-    MSG_MEETING_CHAT        = auto()
-    MSG_MEETING_CHAT_REPLY  = auto()
     MSG_WAKEUP              = auto()
     MSG_ARRIVAL             = auto()
-    MSG_DATE_OVER           = auto()
 
 class Telegram:
     

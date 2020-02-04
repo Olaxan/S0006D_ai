@@ -26,7 +26,7 @@ if __name__ == "__main__":
     ]
 
     for agent in agents:
-        agent.init()
+        agent.start()
 
     while True:
         time.sleep(0.2)

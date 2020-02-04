@@ -17,36 +17,33 @@ class StateContext(ABC):
             self._previous_state = self._current_state
 
         if self._current_state is not None and do_exit:
-            self._current_state.exit()
+            self._current_state.exit(self)
         
         self._current_state = state
-        self.start()
+        self._current_state.enter(self)
 
     def revert_state(self):
-        #print("reverting from %s to %s" % (self._current_state, self._previous_state))
+        #print("Reverting from {} to {}".format(self._current_state, self._previous_state))
         self.change_state(self._previous_state)
 
     def is_in_state(self, state: State) -> bool:
         return type(self._current_state) == type(state)
 
+    def start(self):
+        if self._current_state is not None:
+            self._current_state.enter(self)
+
     def init(self):
         pass
 
-    def start(self):
-        if self._current_state is not None:
-            self._current_state.context = self
-            self._current_state.enter()
-        if self._global_state is not None:
-            self._global_state.context = self
-
     def update(self, step = 1):
-        if self._global_state is not None: self._global_state.execute(step)
-        if self._current_state is not None: self._current_state.execute(step)
+        if self._global_state is not None: self._global_state.execute(self, step)
+        if self._current_state is not None: self._current_state.execute(self, step)
 
     def handle_message(self, message):
-        if self._current_state is not None and self._current_state.on_message(message):
+        if self._current_state is not None and self._current_state.on_message(self, message):
             return True
-        if self._global_state is not None and self._global_state.on_message(message):
+        if self._global_state is not None and self._global_state.on_message(self, message):
             return True
 
     @property
@@ -55,29 +52,19 @@ class StateContext(ABC):
         
 class State(ABC):
 
-    _context = None
-
     state_name = "unknown reasons"
     state_verb = "doing something"
 
     ignore_global = False
 
-    @property
-    def context(self) -> StateContext:
-        return self._context
+    def enter(self, context):
+        pass
 
-    @context.setter
-    def context(self, context: StateContext):
-        self._context = context
+    def execute(self, context, step):
+        pass
 
-    def on_message(self, telegram) -> bool:
+    def exit(self, context):
+        pass
+
+    def on_message(self, context, telegram) -> bool:
         return False
-
-    def enter(self):
-        pass
-
-    def execute(self, step):
-        pass
-
-    def exit(self):
-        pass
