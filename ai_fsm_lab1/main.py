@@ -8,7 +8,7 @@ if __name__ == "__main__":
         "travven"       : [1, 1],
         "dallas"        : [3, 0],
         "coop"          : [5, 0],
-        "brännarvägen"    : [2, 2],
+        "brännarvägen"  : [2, 2],
         "morö backe"    : [3, 2],
         "frögatan 154"  : [3, 3],
         "frögatan 183"  : [3, 4],
