@@ -570,6 +570,8 @@ class SleepState(AgentState):
     def on_message(self, context, telegram: Telegram):
         if telegram.message == MessageTypes.MSG_MEETING:
             context.describe("briefly awoken by his phone")
+            reply_msg = Telegram(context.id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, False)
+            context.world.dispatch(reply_msg)
             return True
         if telegram.message == MessageTypes.MSG_WAKEUP:
             print(choice(self.alarm))
@@ -736,16 +738,78 @@ class MeetingState(SharedState):
     _replies = 0
 
     _phrases = [
-        ("Drinking wine is like looking into the eye of a duck","And sucking all the fluids... from its beak"),
-        ("You've got something between your teeth","Oh, but you have something between your ears!"),
-        ("Didya read that book I told you about?","I barely have time to live as it is"),
-        ("How was work today, then?","Just about as terrible as usual"),
-        ("Can't wait for the Kravallsittning","Kravall 2020 babyyy!"),
-        ("What's that smell?","Perhaps your nose is too close to your mouth"),
-        ("Is that weird dude still staring at me?","Where?"),
-        ("God, my tooth hurts!","Go see a dentist, then"),
-        ("I love art - especially late... art","I like how the cow is looking off the side of the painting"),
-        ("I've been playing a lot of INFRA lately","I don't want to hear another word about INFRA")
+        ["Drinking wine is like looking into the eye of a duck", [
+            "And sucking all the fluids... from its beak",
+            "You've had too much wine yourself, it seems!",
+            "The colours, a- ALL the colours!",
+            "Not much for wine, OR ducks, myself",
+            "I'm more of a goose person",
+            "Hate wine!"]
+        ], ["You've got something between your teeth", [
+            "Oh, but you have something between your ears!",
+            "Oh, no! How long has that been there?",
+            "Whoah, that's almost a whole sardine!",
+            "Thanks for pointing that out!",
+            "Cheerio!",
+            "Hate popcorn!"]
+        ], ["Didya read that book I told you about?", [
+            "I barely have time to live as it is",
+            "Dostojevskij really knew how to write!",
+            "Yes, it's alright, I suppose",
+            "Not much for sci-fi, but it's good so far",
+            "With the DOA underway? No way José",
+            "Hate books!"]
+        ], ["How was work today, then?", [
+            "Just about as terrible as usual",
+            "Oh, alright I suppose...",
+            "There was this really nasty lady...",
+            "Can't complain!",
+            "Not too shabby, how about you?",
+            "Hate work!"]
+        ], ["Can't wait for the Kravallsittning", [
+            "Kravall 2020 babyyy!",
+            "Oh shit, I have to buy a ticket!",
+            "I have so many märken to sew on...",
+            "I've been airing out my ovve for a week and it still smells like crayfish",
+            "Hype",
+            "I'm not going this year, I'll be out of town",
+            "Love Kravall!"]
+        ], ["What's that smell?", [
+            "Perhaps your nose is too close to your mouth",
+            "Smells like elderberries",
+            "I don't know, but I don't like it",
+            "Smells like food!",
+            "Oh, sorry",
+            "I hate it!"]
+        ], ["Is that weird dude still staring at me?", [
+            "Where?",
+            "I think so...",
+            "I don't know, who?",
+            "What?",
+            "Yep",
+            "Wanna leave?",
+            "Hate weird dudes!"]
+        ], ["God, my tooth hurts!", [
+            "Go see a dentist, then",
+            "Stop chewing so hard",
+            "How long has it been aching?",
+            "That sucks",
+            "Sorry to hear that",
+            "Hate teeth!"]
+        ], ["I love art - especially late... art", [
+            "I like how the cow is looking off the side of the painting",
+            "That's not art, that's grafitti",
+            "Hate art!",
+            "You pretentious plonker",
+            "That's just the sign to the bathroom"]
+        ], ["I've been playing a lot of INFRA lately", [
+            "I don't want to hear another word about INFRA",
+            "I honestly, truly, couldn't care less",
+            "This again?",
+            "Nooooo",
+            "Oh, I love that game!",
+            "Hate that game!"]
+        ]
     ]
 
     _disband_group = [
@@ -838,6 +902,10 @@ class MeetingState(SharedState):
 
     def execute(self, context, step):
 
+        # print("MEETING: {} in party, host ID {}, {} invitations, {} replies\n[{}]".format(
+        #     self.count, self.host_id, self._invitations, self._replies, ", ".join(list(agent.name for agent in self._party))
+        # ))
+
         # If agent is alone in group after receiving all replies from all, leave the group
         if self._replies >= self._invitations and self.count == 1:
             context.say(choice(self._disband_group))
@@ -858,7 +926,7 @@ class MeetingState(SharedState):
             if partner is not context and partner.is_near(context):
                 phrase = self._phrases[randint(0, len(self._phrases) - 1)]
                 context.say_to(partner, phrase[0])
-                partner.say_to(context, phrase[1])
+                partner.say_to(context, choice(phrase[1]))
                 context.social.sub(2)
                 partner.social.sub(2)
             return
