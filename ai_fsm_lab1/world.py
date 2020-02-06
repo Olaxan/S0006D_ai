@@ -1,20 +1,56 @@
 import agent
 from telegram import Telegram
+from path import WeightedGrid
+from random import randint
+
+def load_map(filename):
+    try:
+        file = open(filename, "r")
+    except:
+        return None
+        
+    lines = file.readlines()
+    file.close()
+    height = len(lines)
+    walls = []
+
+    if height == 0: 
+        return False
+            
+    width = len(max(lines, key=len)) - 1 #TODO: NOT GOOD!
+
+    y = 0
+    for line in lines:
+        x = 0
+        for char in line:
+            if   char == 'X':   walls.append((x, y))
+            elif char == 'S':   start = (x, y)
+            elif char == 'G':   goal = (x, y)
+            x += 1
+        y += 1
+
+    return width, height, walls, start, goal
 
 # Class for holding locations, as well as managing agents in the world, and providing messaging
 class World:
 
-    _agents = {}        # Agent dictionary, key is ID
-    _locations = {}     # Location dictionary, key is location string
+    agents = {}        # Agent dictionary, key is ID
+    locations = {}     # Location dictionary, key is location string
     _messages = []      # Delayed message queue
     _next_id = 0        # Static ID counter
     _time = 0           # Game time
 
-    def __init__(self, locations: dict = {}):
-        self._locations = locations
-        self._agents = {}
+    def __init__(self, width, height, walls = [], locations = {}):
+        self.agents = {}
+        self.locations = locations
         self._messages = []
         self._time = 0
+        self._graph = WeightedGrid(width, height, walls)
+
+    @classmethod
+    def from_map(cls, filename, locations = {}):
+        width, height, walls = load_map(filename)[:3]
+        return cls(width, height, walls, locations)
 
     # Returns the time as an hour decimal wrapped to 24 hours
     @property
@@ -43,6 +79,18 @@ class World:
     def minutes(self) -> int:
         return int(60.0 * float(self._time % 1.0))
 
+    @property
+    def width(self) -> int:
+        return self._graph.width
+
+    @property
+    def height(self) -> int:
+        return self._graph.height
+
+    @property
+    def graph(self) -> WeightedGrid:
+        return self._graph
+
     # Formats a given time as HH:MM
     @staticmethod
     def time_format_24(time) -> str:
@@ -51,8 +99,12 @@ class World:
         return "{:02d}:{:02d}".format(hour, minute)
 
     # Internal - check if ID is free
-    def _id_is_free(self, id: int):
-        return id not in self._agents
+    def _id_is_free(self, id: int) -> bool:
+        return id not in self.agents
+
+    # Internal - check if location cell is free
+    def _cell_is_free(self, cell) -> bool:
+        return cell not in self.locations and not self.graph.is_solid(cell)
 
     # Internal - dispatch all due messages in queue
     def _dispatch_delayed(self):
@@ -63,38 +115,40 @@ class World:
 
     # Register an agent and call initializer, returning agent's assigned ID
     def register_agent(self, agent) -> int:
-        self._agents[self._next_id] = agent
+        self.agents[self._next_id] = agent
         self._next_id += 1
         agent.init()
         return self._next_id - 1
 
     # Remove an agent from the dictionary
     def remove_agent(self, id: int):
-        if id in self._agents: self._agents.pop(id)
+        if id in self.agents: self.agents.pop(id)
 
     # Returns an agent when provided with valid ID
     def get_agent(self, id: int):
-        return self._agents[id] if id in self._agents else None
+        return self.agents[id] if id in self.agents else None
 
     # Return list of agents matching ID:s in args
-    def get_agents(self, *ids):
+    def getagents(self, *ids):
         agents = []
         for id in ids:
             agent = self.get_agent(id)
             if agent is not None: agents.append(agent)
         return agents
 
-    # Adds a new location to the location dictionary
-    def add_location(self, name: str, coordinates: (int, int)):
-        self._locations[name] = coordinates
-
-    # Removes a location from the location dictionary
-    def remove_location(self, name: str):
-        if name in self._locations: self._locations.pop(name)
-
     # Returns a location coordinate when provided with location string
     def get_location(self, name: str) -> (int, int):
-        return self._locations.get(name, [0, 0])
+        return self.locations.get(name, (0, 0))
+
+    def get_random_cell(self):
+        while True:
+            cell = (randint(0, self.width - 1), randint(0, self.height - 1))
+            if self._cell_is_free(cell):
+                return cell
+
+    def place_random(self, *args):
+        for place in args:
+            self.locations[place] = self.get_random_cell()
 
     # Returns whether the specified agent is present at a location string
     def is_at(self, agent, location: str) -> bool:
@@ -103,7 +157,8 @@ class World:
             agent = self.get_agent(id)
             
         if agent == None: return False
-        return agent.location == self._locations[location]
+        x, y = agent.location
+        return (x, y) == self.locations[location]
 
     # Move the world forward a step of the specified size, update all agents
     def step_forward(self, step = 1):
@@ -117,7 +172,7 @@ class World:
         self._time += step
         self._dispatch_delayed()
 
-        for agent in self._agents.values():
+        for agent in self.agents.values():
             agent.update(step)
 
     # Dispatch a message with optional delay
@@ -126,14 +181,14 @@ class World:
         agents = []
 
         if telegram.receiver_id == None:
-            for agent in self._agents.values():
+            for agent in self.agents.values():
                 if agent.id is not telegram.sender_id: agents.append(agent)
         else:
             if type(telegram.receiver_id) is int:
                 agent = self.get_agent(telegram.receiver_id)
                 if agent is not None: agents.append(agent)
             else:
-                agents = self.get_agents(*telegram.receiver_id)
+                agents = self.getagents(*telegram.receiver_id)
 
         if delay <= 0:
             for agent in agents:

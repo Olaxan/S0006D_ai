@@ -5,6 +5,7 @@ from random import randint, seed, choice
 from world import World
 from telegram import Telegram, MessageTypes
 from utils import Clamped
+from path import a_star_search, manhattan
 
 # Autonomous agent, with stats, name, and location in world
 class Agent(StateContext):
@@ -52,7 +53,8 @@ class Agent(StateContext):
     # Gets called by world manager, just before receiving an ID
     # For delayed initalization of variables that need reference to World
     def init(self):
-        self.location = copy.copy(self.world.get_location(self.home)) # The agent should begin at home
+        x, y = self.world.get_location(self.home)
+        self.location = [x, y] # The agent should begin at home
 
     # Returns whether the agent is at the specified location
     # Takes a location name
@@ -64,15 +66,15 @@ class Agent(StateContext):
         return self._location == other._location
 
     # Places the agent in a "goto"-state, moving them in the World
-    def goto(self, location: str, on_arrive: State = None):
+    def goto(self, location: str, on_arrive = None):
 
         if on_arrive is None: on_arrive = self._current_state
 
         target = self.world.get_location(location)
-        eta = GotoState.estimate(self.location, target, self.speed)
+        eta = GotoState.estimate(self, self.location, target)
 
         self.describe("going to {} for {} (ETA: {})".format(location.capitalize(), on_arrive.state_name, World.time_format_24(self.world.time + eta)))
-        self.change_state(GotoState(target, self.speed, on_arrive), False, False)
+        self.change_state(GotoState(target, self.speed, on_arrive, PathErrorState()), False, False)
 
     # Describes an action in, the form of "[HH:MM] Agent is ...""
     def describe(self, action):
@@ -118,11 +120,12 @@ class Agent(StateContext):
 
     @property   # Returns agent's [X, Y] position in World
     def location(self):
-        return self._location
+        return self.x, self.y
 
     @location.setter
-    def location(self, location: [int, int]):
-        self._location = location
+    def location(self, location):
+        x, y = location
+        self._location = [x, y]
 
 # A specialized FSM state, containing flavor text, as well as providing an Agent context instead of StateContext
 class AgentState(State):
@@ -141,12 +144,10 @@ class AgentState(State):
 # Move the agent to another place on the board
 class GotoState(AgentState):
 
-    _target = [0, 0]
-    _on_arrive: None
-    _speed = 1
-
     state_name = "a walk"
     state_verb = "walking"
+
+    heuristic = manhattan
 
     meeting_refuse = [
         "Sorry, I'm on my way somewhere!",
@@ -156,31 +157,53 @@ class GotoState(AgentState):
         "Ah, I'd love to, but try me again in a few hours"
     ]
     
-    @staticmethod  # Estimate the time it will take to move to a new location in a straight line
-    def estimate(location, target, speed):
-        delta_x = abs(location[0] - target[0])
-        delta_y = abs(location[1] - target[1])
-        return max(delta_x / speed, delta_y / speed)
+    @staticmethod  # Estimate the time it will take to move to a new location using a-star
+    def estimate(context, location, target):
+        success, path = a_star_search(context.world.graph, location, target, GotoState.heuristic)
+        return len(path) / context.speed if success else -1
 
-    def __init__(self, location: [int, int], speed = 1, on_arrive: State = None):
+    def __init__(self, location, speed = 1, on_arrive = None, on_fail = None):
         self._on_arrive = on_arrive
+        self._on_fail = on_fail
         self._target = location
         self._speed = speed
+        self._path = []
+        self._progress = 0
 
     def _has_arrived(self, context) -> bool:
         return self._target[0] == context.x and self._target[1] == context.y
 
-    def exit(self, context):
-        if self._has_arrived(context):
-            arrive_msg = Telegram(context.id, None, MessageTypes.MSG_ARRIVAL, context.location)
-            context.world.dispatch(arrive_msg)
+    def _finish(self, context):
+        context.change_state(self._on_arrive) if self._on_arrive is not None else context.revert_state()
+        arrive_msg = Telegram(context.id, None, MessageTypes.MSG_ARRIVAL, context.location)
+        context.world.dispatch(arrive_msg)
+
+    def _abort(self, context):
+        context.change_state(self._on_fail) if self._on_fail is not None else context.revert_state()
+        arrive_msg = Telegram(context.id, None, MessageTypes.MSG_PATH_FAIL, context.location)
+        context.world.dispatch(arrive_msg)
+
+    def enter(self, context):
+        success, self._path = a_star_search(context.world.graph, context.location, self._target, GotoState.heuristic)
+        if success:
+            print(self._path)
+        else: 
+            self._abort(context)
 
     def execute(self, context, step):
 
-        if self._has_arrived(context):
-            context.change_state(self._on_arrive) if self._on_arrive is not None else context.revert_state()
+        path_len = len(self._path)
+
+        if path_len > 0:
+            self._progress += int(context.speed * step)
+            if self._progress >= path_len: 
+                context.location = self._path[-1]
+                self._finish(context)
+            else:
+                context.location = self._path[self._progress]
             return
 
+        # If the execute function is performed with no valid path, use old navigation
         delta_x = self._target[0] - context.x
         if delta_x != 0:
             sign_x = delta_x / abs(delta_x)
@@ -203,6 +226,11 @@ class GotoState(AgentState):
             context.world.dispatch(reply_msg)
             return True
         return False
+
+class PathErrorState(AgentState):
+
+    def enter(self, context):
+        context.describe("placed in a path error state!")
 
 # A state with a common pool of participants, with the first member counting as host
 class SharedState(AgentState):
@@ -283,7 +311,7 @@ class GlobalState(AgentState):
         # Retrieve a meeting invitation, and accept it based on social needs
         if telegram.message == MessageTypes.MSG_MEETING:
             if randint(0, context.social.max) <= context.social.current:
-                eta = GotoState.estimate(context.location, context.world.get_location(telegram.data), context.speed)
+                eta = GotoState.estimate(context, context.location, context.world.get_location(telegram.data))
 
                 if context.location == sender.location:
                     context.say_to(sender, choice(self.meeting_same_location).format(telegram.data.place.capitalize()))
@@ -552,7 +580,7 @@ class SleepState(AgentState):
     def enter(self, context):
         if context.is_at(context.home):
             # Dispatch delayed message to self in order to wake up in time for work
-            wakeup_time = WorkState.start_hour - GotoState.estimate(context.location, context.world.get_location(context.work), context.speed) - 0.25
+            wakeup_time = WorkState.start_hour - GotoState.estimate(context, context.location, context.world.get_location(context.work)) - 0.25
             context.say(choice(self.starting_sleep))
             context.say(choice(self.set_alarm).format(World.time_format_24(wakeup_time)))
             alarm = Telegram(context.id, context.id, MessageTypes.MSG_WAKEUP)

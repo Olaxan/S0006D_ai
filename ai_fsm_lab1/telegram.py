@@ -7,6 +7,7 @@ class MessageTypes(Enum):
     MSG_MEETING_LEAVING     = auto()    # Message to announce leaving a meeting
     MSG_WAKEUP              = auto()    # Message to wake up during sleep state
     MSG_ARRIVAL             = auto()    # Message to announce arriving at a new location, data is location string
+    MSG_PATH_FAIL           = auto()    # Message to announce agent failed to path to location
 
 class Telegram:
     

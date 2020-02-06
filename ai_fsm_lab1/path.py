@@ -82,11 +82,10 @@ class WeightedGrid(Grid):
         self.weights = weights
         self.default = default
 
-    def neighbours(self, cell):
-        cost = self.weights.get(cell, self.default)
-        return super().neighbours(cell), cost
+    def cost(self, cell):
+        return self.weights.get(cell, self.default)
 
-def reconstruct(self, node_map, start, goal):
+def reconstruct(node_map, start, goal):
     node = goal
     path = []
     while node is not start:
@@ -96,7 +95,7 @@ def reconstruct(self, node_map, start, goal):
     path.reverse()
     return path
 
-def brute_force_search(self, graph, start, goal, width_first = False):
+def brute_force_search(graph, start, goal, width_first = False):
     edges = QStack(width_first)
     edges.put(start)
     node_map = {}
@@ -112,16 +111,17 @@ def brute_force_search(self, graph, start, goal, width_first = False):
                 edges.put(next)
                 node_map[next] = node
     
-    return self.reconstruct(node_map, start, goal)
+    return reconstruct(node_map, start, goal)
 
-def manhattan(self, start, goal):
+def manhattan(start, goal):
     x1, y1 = start
     x2, y2 = goal
     return abs(x2 - x1) + abs(y2 - y1)
 
-def a_star_search(self, map, start, goal, heuristic):
+def a_star_search(graph, start, goal, heuristic):
     
     edges = PriorityQueue()
+    edges.put(start, 0)
     came_from = {start: None}
     cost_map = {start: 0}
 
@@ -129,16 +129,15 @@ def a_star_search(self, map, start, goal, heuristic):
         node = edges.pop()
 
         if node is goal:
-            return True, self.reconstruct(came_from, start, goal)
+            return True, reconstruct(came_from, start, goal)
         
-        for next in node.neighbours():
-            next_node, cost = next
-            next_cost = cost_map[node] + cost
-            if next_node not in cost_map or next_cost < cost_map[next_node]:
-                cost_map[next_node] = next_cost
-                priority = next_cost + heuristic(goal, next_node)
-                edges.put(next_node, priority)
-                came_from[next_node] = node
+        for next in graph.neighbours(node):
+            next_cost = cost_map[node] + graph.cost(next)
+            if next not in cost_map or next_cost < cost_map[next]:
+                cost_map[next] = next_cost
+                priority = next_cost + heuristic(goal, next)
+                edges.put(next, priority)
+                came_from[next] = node
 
     return False, None
 
