@@ -1,46 +1,68 @@
-import sys, time, pygame
+from random import seed, randint
+import pygame
 from agent import Agent
 from world import World
-from path import WeightedGrid
 
 if __name__ == "__main__":
 
-    world = World.from_map(R"map\Map1.txt")
-    world.place_random("ltu", "travven", "dallas", "ica", "coop", "brännarvägen", "morö backe", "frögatan 154", "frögatan 181", "staregatan")
+    WORLD_PATH = R"map\Map1.txt"
+    seed(WORLD_PATH)
+    
+    WORLD = World.from_map(WORLD_PATH)
+    WORLD.place_random("ltu", "travven", "dallas", "ica", "coop", "brännarvägen", "morö backe", "frögatan 154", "frögatan 181", "staregatan")
 
-    agents = [
-        Agent(world, "Semlo", "frögatan 154", "coop"),
-        Agent(world, "Lukas", "morö backe", "dallas"),
-        Agent(world, "Sahmon", "frögatan 181", "ltu"),
-        Agent(world, "Spenus", "staregatan", "ltu"),
-        Agent(world, "Gurke", "brännarvägen", "ica")
+    AGENTS = [
+        Agent(WORLD, "Semlo", "frögatan 154", "coop"),
+        Agent(WORLD, "Lukas", "morö backe", "dallas"),
+        Agent(WORLD, "Sahmon", "frögatan 181", "ltu"),
+        #Agent(WORLD, "Spenus", "staregatan", "ltu"),
+        #Agent(WORLD, "Gurke", "brännarvägen", "ica")
     ]
 
-    for agent in agents:
+    for agent in AGENTS:
         agent.start()
+        agent.color = pygame.color.Color(randint(0, 200), randint(0, 200), randint(0, 200))
 
-    #PYGAME
-    cell_size = 32
-    screen = pygame.display.set_mode((cell_size * world.width, cell_size * world.height))
+    pygame.init()
+
+    # INIT PYGAME
+    CELL_SIZE = 32
+    SCREEN = pygame.display.set_mode((CELL_SIZE * WORLD.width, CELL_SIZE * WORLD.height))
+    pygame.display.set_caption("Pathfinding Sandbox")
+
+    COL_DARK_CELL = pygame.color.Color(200, 200, 200)
+    COL_LIGHT_CELL = pygame.color.Color(255, 255, 255)
+    COL_WALL = pygame.color.Color(0, 0, 0)
+    COL_PLACE = pygame.color.Color(255, 200, 200)
 
     while True:
 
-        for y in range(world.height):
-            for x in range(world.width):
-                rect = pygame.Rect(x * cell_size, y * cell_size, cell_size, cell_size)
-                color = pygame.color.Color(255, 255, 255) if (x + y) % 2 == 0 else pygame.color.Color(200, 200, 200)
-                pygame.draw.rect(screen, color, rect)
+        for y in range(WORLD.height):
+            for x in range(WORLD.width):
+                rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                color = COL_LIGHT_CELL if (x + y) % 2 == 0 else COL_DARK_CELL
+                pygame.draw.rect(SCREEN, color, rect)
 
-        for place in world.locations.values():
-            rect = pygame.Rect(place[0] * cell_size + 3, place[1] * cell_size + 3, cell_size - 6, cell_size - 6)
-            color = pygame.color.Color(255, 200, 200)
-            pygame.draw.rect(screen, color, rect)
+        for wall in WORLD.graph.walls:
+            rect = pygame.Rect(wall[0] * CELL_SIZE, wall[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+            pygame.draw.rect(SCREEN, COL_WALL, rect)
 
-        for wall in world.graph.walls:
-            rect = pygame.Rect(wall[0] * cell_size, wall[1] * cell_size, cell_size, cell_size)
-            color = pygame.color.Color(0, 0, 0)
-            pygame.draw.rect(screen, color, rect)
+        for place in WORLD.locations.values():
+            rect = pygame.Rect(place[0] * CELL_SIZE + 3, place[1] * CELL_SIZE + 3, CELL_SIZE - 6, CELL_SIZE - 6)
+            pygame.draw.rect(SCREEN, COL_PLACE, rect)
 
-        pygame.display.update()
-        world.step_forward(0.25)
-        pygame.time.delay(100)
+        for agent in AGENTS:
+            rect = pygame.Rect(agent.x * CELL_SIZE + 10, agent.y * CELL_SIZE + 10, CELL_SIZE - 20, CELL_SIZE - 20)
+            pygame.draw.rect(SCREEN, agent.color, rect)
+
+            if agent.is_walking:
+                path = agent.state.route
+                for p in range(len(path) - 1):
+                    p1 = (int((path[p][0] + 0.5) * CELL_SIZE), int((path[p][1] + 0.5) * CELL_SIZE))
+                    p2 = (int((path[p + 1][0] + 0.5) * CELL_SIZE), int((path[p + 1][1] + 0.5) * CELL_SIZE))
+                    pygame.draw.line(SCREEN, agent.color, p1, p2)
+
+
+        pygame.display.flip()
+        WORLD.step_forward(0.25)
+        pygame.time.delay(500)

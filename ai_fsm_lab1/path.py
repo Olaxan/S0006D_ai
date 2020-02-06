@@ -24,7 +24,7 @@ class PriorityQueue:
     def is_empty(self):
         return len(self.heap) == 0
 
-    def put(self, element, priority = 1):
+    def put(self, element, priority=1):
         heapq.heappush(self.heap, (priority, element))
 
     def pop(self):
@@ -32,17 +32,17 @@ class PriorityQueue:
 
 class Graph:
 
-    def __init__(self, edges = {}):
-        self.edges = edges
+    def __init__(self, edges=None):
+        self.edges = edges if edges is not None else []
 
     def neighbours(self, node):
         return self.edges[node]
 
 class WeightedGraph:
 
-    def __init__(self, edges = {}, weights = {}, default = 1):
-        self.edges = edges
-        self.weights = weights
+    def __init__(self, edges=None, weights=None, default=1):
+        self.edges = edges if edges is not None else []
+        self.weights = weights if weights is not None else {}
         self.default = default
 
     def neighbours(self, node):
@@ -51,16 +51,16 @@ class WeightedGraph:
 
 class Grid:
 
-    def __init__(self, width, height, walls = []):
+    def __init__(self, width, height, walls=None):
         self.width = width
         self.height = height
-        self.walls = walls
+        self.walls = walls if walls is not None else []
 
     def is_in_bounds(self, cell):
         (x, y) = cell
         return 0 <= x < self.width and 0 <= y < self.height
 
-    def is_solid(self, cell):
+    def is_free(self, cell):
         return cell not in self.walls
 
     def neighbours(self, cell):
@@ -72,14 +72,14 @@ class Grid:
             (x, y + 1)  # bottom
         ]
         results = filter(self.is_in_bounds, results)
-        results = filter(self.is_solid, results)
+        results = filter(self.is_free, results)
         return results
 
 class WeightedGrid(Grid):
 
-    def __init__(self, width, height, walls = [], weights = {}, default = 1):
+    def __init__(self, width, height, walls=None, weights=None, default=1):
         super().__init__(width, height, walls)
-        self.weights = weights
+        self.weights = weights if weights is not None else {}
         self.default = default
 
     def cost(self, cell):
@@ -95,7 +95,7 @@ def reconstruct(node_map, start, goal):
     path.reverse()
     return path
 
-def brute_force_search(graph, start, goal, width_first = False):
+def brute_force_search(graph, start, goal, width_first=False):
     edges = QStack(width_first)
     edges.put(start)
     node_map = {}
@@ -106,11 +106,11 @@ def brute_force_search(graph, start, goal, width_first = False):
         if node is goal:
             break
 
-        for next in graph.neighbours(node):
-            if next not in node_map:
-                edges.put(next)
-                node_map[next] = node
-    
+        for next_node in graph.neighbours(node):
+            if next_node not in node_map:
+                edges.put(next_node)
+                node_map[next_node] = node
+
     return reconstruct(node_map, start, goal)
 
 def manhattan(start, goal):
@@ -119,7 +119,6 @@ def manhattan(start, goal):
     return abs(x2 - x1) + abs(y2 - y1)
 
 def a_star_search(graph, start, goal, heuristic):
-    
     edges = PriorityQueue()
     edges.put(start, 0)
     came_from = {start: None}
@@ -128,16 +127,15 @@ def a_star_search(graph, start, goal, heuristic):
     while not edges.is_empty:
         node = edges.pop()
 
-        if node is goal:
+        if node == goal:
             return True, reconstruct(came_from, start, goal)
-        
-        for next in graph.neighbours(node):
-            next_cost = cost_map[node] + graph.cost(next)
-            if next not in cost_map or next_cost < cost_map[next]:
-                cost_map[next] = next_cost
-                priority = next_cost + heuristic(goal, next)
-                edges.put(next, priority)
-                came_from[next] = node
+
+        for next_node in graph.neighbours(node):
+            next_cost = cost_map[node] + graph.cost(next_node)
+            if next_node not in cost_map or next_cost < cost_map[next_node]:
+                cost_map[next_node] = next_cost
+                priority = next_cost + heuristic(goal, next_node)
+                edges.put(next_node, priority)
+                came_from[next_node] = node
 
     return False, None
-

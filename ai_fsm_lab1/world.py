@@ -1,4 +1,3 @@
-import agent
 from telegram import Telegram
 from path import WeightedGrid
 from random import randint
@@ -6,9 +5,9 @@ from random import randint
 def load_map(filename):
     try:
         file = open(filename, "r")
-    except:
+    except OSError:
         return None
-        
+
     lines = file.readlines()
     file.close()
     height = len(lines)
@@ -16,16 +15,19 @@ def load_map(filename):
 
     if height == 0: 
         return False
-            
-    width = len(max(lines, key=len)) - 1 #TODO: NOT GOOD!
+
+    width = len(max(lines, key=len)) - 1
 
     y = 0
     for line in lines:
         x = 0
         for char in line:
-            if   char == 'X':   walls.append((x, y))
-            elif char == 'S':   start = (x, y)
-            elif char == 'G':   goal = (x, y)
+            if   char == 'X':
+                walls.append((x, y))
+            elif char == 'S':
+                start = (x, y)
+            elif char == 'G':
+                goal = (x, y)
             x += 1
         y += 1
 
@@ -34,21 +36,17 @@ def load_map(filename):
 # Class for holding locations, as well as managing agents in the world, and providing messaging
 class World:
 
-    agents = {}        # Agent dictionary, key is ID
-    locations = {}     # Location dictionary, key is location string
-    _messages = []      # Delayed message queue
     _next_id = 0        # Static ID counter
-    _time = 0           # Game time
 
-    def __init__(self, width, height, walls = [], locations = {}):
-        self.agents = {}
-        self.locations = locations
+    def __init__(self, width, height, walls=None, locations=None):
         self._messages = []
         self._time = 0
         self._graph = WeightedGrid(width, height, walls)
+        self.agents = {}
+        self.locations = locations if locations is not None else {}
 
     @classmethod
-    def from_map(cls, filename, locations = {}):
+    def from_map(cls, filename, locations=None):
         width, height, walls = load_map(filename)[:3]
         return cls(width, height, walls, locations)
 
@@ -99,12 +97,12 @@ class World:
         return "{:02d}:{:02d}".format(hour, minute)
 
     # Internal - check if ID is free
-    def _id_is_free(self, id: int) -> bool:
-        return id not in self.agents
+    def _id_is_free(self, agent_id: int) -> bool:
+        return agent_id not in self.agents
 
     # Internal - check if location cell is free
     def _cell_is_free(self, cell) -> bool:
-        return cell not in self.locations and not self.graph.is_solid(cell)
+        return cell not in self.locations.values() and self.graph.is_free(cell)
 
     # Internal - dispatch all due messages in queue
     def _dispatch_delayed(self):
@@ -121,19 +119,20 @@ class World:
         return self._next_id - 1
 
     # Remove an agent from the dictionary
-    def remove_agent(self, id: int):
-        if id in self.agents: self.agents.pop(id)
+    def remove_agent(self, agent_id: int):
+        if agent_id in self.agents: self.agents.pop(agent_id)
 
     # Returns an agent when provided with valid ID
-    def get_agent(self, id: int):
-        return self.agents[id] if id in self.agents else None
+    def get_agent(self, agent_id: int):
+        return self.agents[agent_id] if agent_id in self.agents else None
 
     # Return list of agents matching ID:s in args
-    def getagents(self, *ids):
+    def getagents(self, *agent_ids):
         agents = []
-        for id in ids:
-            agent = self.get_agent(id)
-            if agent is not None: agents.append(agent)
+        for agent_id in agent_ids:
+            agent = self.get_agent(agent_id)
+            if agent is not None:
+                agents.append(agent)
         return agents
 
     # Returns a location coordinate when provided with location string
@@ -153,10 +152,12 @@ class World:
     # Returns whether the specified agent is present at a location string
     def is_at(self, agent, location: str) -> bool:
         
-        if type(agent) == int:
-            agent = self.get_agent(id)
+        if isinstance(agent, int):
+            agent = self.get_agent(agent)
             
-        if agent == None: return False
+        if agent is None:
+            return False
+
         x, y = agent.location
         return (x, y) == self.locations[location]
 
@@ -176,30 +177,30 @@ class World:
             agent.update(step)
 
     # Dispatch a message with optional delay
-    def dispatch(self, telegram: Telegram, delay = 0):
+    def dispatch(self, telegram: Telegram, delay=0):
 
         agents = []
 
-        if telegram.receiver_id == None:
+        if telegram.receiver_id is None:
             for agent in self.agents.values():
-                if agent.id is not telegram.sender_id: agents.append(agent)
+                if agent.agent_id is not telegram.sender_id:
+                    agents.append(agent)
         else:
-            if type(telegram.receiver_id) is int:
+            if isinstance(telegram.receiver_id, int):
                 agent = self.get_agent(telegram.receiver_id)
-                if agent is not None: agents.append(agent)
+                if agent is not None:
+                    agents.append(agent)
             else:
                 agents = self.getagents(*telegram.receiver_id)
 
         if delay <= 0:
             for agent in agents:
                 agent.handle_message(telegram)
-
-            #print("Message sent to {} agents".format(len(agents)))
             return len(agents)
-        else:
-            telegram.dispatch_time = self._time + delay
-            self._messages.append(telegram)
-            return 0
+
+        telegram.dispatch_time = self._time + delay
+        self._messages.append(telegram)
+        return 0
 
     # Set a message for scheduled dispatch, the current or next day
     def dispatch_scheduled(self, time, telegram: Telegram):

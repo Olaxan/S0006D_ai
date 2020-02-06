@@ -1,12 +1,12 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
+from abc import ABC
 
 # FSM context - provides FSM capabilities to objects inheriting from it
 class StateContext(ABC):
 
-    _global_state:      State = None
-    _current_state:     State = None
-    _previous_state:    State = None
+    _global_state: State = None
+    _current_state: State = None
+    _previous_state: State = None
 
     @property
     def state(self) -> State:
@@ -16,16 +16,16 @@ class StateContext(ABC):
         self._current_state = initial_state
         self._global_state = global_state
 
-    # Change to a new state, optionally omitting exiting current state, 
+    # Change to a new state, optionally omitting exiting current state,
     # and preventing the new state from overwriting the current state "blip"
-    def change_state(self, state: State, do_exit: bool = True, revertable = True):
+    def change_state(self, state: State, do_exit=True, revertable=True):
 
         if revertable:
             self._previous_state = self._current_state
 
         if self._current_state is not None and do_exit:
             self._current_state.exit(self)
-        
+
         self._current_state = state
         self._current_state.enter(self)
 
@@ -35,7 +35,7 @@ class StateContext(ABC):
 
     # Check if the FSM is currently in a state of the provided type
     def is_in_state(self, state: State) -> bool:
-        return type(self._current_state) == type(state)
+        return isinstance(self._current_state, state)
 
     # Start the FSM, entering the current state
     def start(self):
@@ -77,4 +77,4 @@ class State(ABC):
 
     # Gets called by the FSM when a message has been received
     def on_message(self, context, telegram) -> bool:
-        return False
+        pass
