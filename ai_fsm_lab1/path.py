@@ -15,11 +15,10 @@ class QStack:
     def pop(self):
         return self.queue.popleft() if self._use_stack else self.queue.pop()
 
-class PriorityQStack:
+class PriorityQueue:
 
-    def __init__(self, use_stack = False):
+    def __init__(self):
         self.heap = []
-        self._use_stack = use_stack
 
     @property
     def is_empty(self):
@@ -97,7 +96,7 @@ def reconstruct(self, node_map, start, goal):
     path.reverse()
     return path
 
-def bf_search(self, graph, start, goal, width_first = False):
+def brute_force_search(self, graph, start, goal, width_first = False):
     edges = QStack(width_first)
     edges.put(start)
     node_map = {}
@@ -115,20 +114,31 @@ def bf_search(self, graph, start, goal, width_first = False):
     
     return self.reconstruct(node_map, start, goal)
 
+def manhattan(self, start, goal):
+    x1, y1 = start
+    x2, y2 = goal
+    return abs(x2 - x1) + abs(y2 - y1)
+
 def a_star_search(self, map, start, goal, heuristic):
     
-    edges = PriorityQStack()
-    node_map = {start: None}
+    edges = PriorityQueue()
+    came_from = {start: None}
     cost_map = {start: 0}
 
     while not edges.is_empty:
         node = edges.pop()
 
         if node is goal:
-            return self.reconstruct(node_map, start, goal)
+            return True, self.reconstruct(came_from, start, goal)
         
         for next in node.neighbours():
             next_node, cost = next
             next_cost = cost_map[node] + cost
             if next_node not in cost_map or next_cost < cost_map[next_node]:
-                pass
+                cost_map[next_node] = next_cost
+                priority = next_cost + heuristic(goal, next_node)
+                edges.put(next_node, priority)
+                came_from[next_node] = node
+
+    return False, None
+
