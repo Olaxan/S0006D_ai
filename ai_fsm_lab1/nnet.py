@@ -3,15 +3,11 @@
 # pip3 install pygame
 
 import torch
-import torchvision
-from torchvision import transforms, datasets
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset
 import torch.optim as optim
-import random
-import pytmx
-from world import World
+from torch.utils.data import Dataset
+from tqdm import tqdm
 from path import Path
 
 
@@ -32,13 +28,17 @@ class CustomDataset(Dataset):
 
         p1 = self.world.get_random_cell()
         p2 = self.world.get_random_cell()
-        success, path, costs = Path.plan(self.world.map, p1, p2)
+        success, path, costs = Path.a_star_search(self.world.graph, p1, p2)
         cost = 0
         if success:
             for node in path:
                 cost += costs[node]
 
-        return path, cost #y??
+        grid = [[0 for col in range(self.world.width)] for row in range(self.world.height)]
+        grid[p1[0]][p1[1]] = 2
+        grid[p2[0]][p2[1]] = 2
+
+        return grid, cost #y??
 
     def populate_dataset(self, count):
         """Fill the dataset with random paths for training purposes"""
@@ -57,22 +57,16 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         return torch.FloatTensor(self.X[index]),self.y[index]
 
-class TrainingData:
-
-    def __init__(self, train_batch=100, test_batch=10, iterations=200, epoch_range=10):
-        self.train_batch = train_batch
-        self.test_batch = test_batch
-        self.iterations = iterations
-        self.epoch_range = epoch_range
-
 class Net(nn.Module):
 
-    def __init__(self, width, height):
+    def __init__(self, input_size, output_size=10):
         super().__init__()
-        self.fc1 = nn.Linear(width * height, 64)
+        self._input_size = input_size
+        self._output_size = output_size
+        self.fc1 = nn.Linear(input_size, 64)
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 64)
-        self.fc4 = nn.Linear(64, 100)
+        self.fc4 = nn.Linear(64, output_size)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -81,41 +75,62 @@ class Net(nn.Module):
         x = self.fc4(x)
         return F.log_softmax(x, dim=1)
 
-    def train(self, train_data, test_data, settings: TrainingData):
+    @property
+    def input_size(self):
+        return self._input_size
 
-        trainset = torch.utils.data.DataLoader(train_data, settings.train_batch, shuffle=True)
-        testset = torch.utils.data.DataLoader(test_data, settings.test_batch, shuffle=False)
-        loss_function = torch.nn.CrossEntropyLoss()
-        optimizer = optim.Adam(self.parameters(), lr=0.001)
+    @property
+    def output(self):
+        return self._output_size
+
+class NeuralHeuristic:
+
+    loss_function = torch.nn.CrossEntropyLoss()
+    optimizer = optim.Adam
+
+    def __init__(self, world, data_points, train_batch=200, test_batch=10):
+        self.net = Net(world.height * world.width)
+        self.optimizer = self.optimizer(self.net.parameters(), lr=0.001)
+        self.train_batch = train_batch
+        self.test_batch = test_batch
+        train_data = CustomDataset(world, data_points)
+        test_data = CustomDataset(world, data_points)
+        train_set = torch.utils.data.DataLoader(train_data, train_batch, shuffle=True)
+        test_set = torch.utils.data.DataLoader(test_data, test_batch, shuffle=False)
+        self.train(train_set, test_set)
+
+    def train(self, train_set, test_set):
+
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        print('Training net on {}'.format(device))
+
+        self.net.to(device)
 
         #Teach the NN
-        for datasets in range(settings.iterations):     #10000
-            for epoch in range(settings.epoch_range):   # 3 full passes over the data
-                for data in trainset:                   # 'data' is a batch of data
-                    X, y = data                         # X is the batch of features, y is the batch of targets.
-                    self.zero_grad()                    # sets gradients to 0 before loss calc. You will do this likely every step.
-                    output = self(X.view(-1, 784))      # pass in the reshaped batch (recall they are 28x28 atm)
-                    loss = F.nll_loss(output, y)        # calc and grab the loss value
-                    loss.backward()                     # apply this loss backwards thru the network's parameters
-                    optimizer.step()                    # attempt to optimize weights to account for loss/gradients
-
-
-    # Test the NN
-    net.eval() # needed?
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for data in testset:
-            X, y = data
-            output = net(X.view(-1,784))
-            #print(output)
-            for idx, i in enumerate(output):
-                print(torch.argmax(i), y[idx])
-                if torch.argmax(i) == y[idx]:
-                    correct += 1
-                total += 1
-
-print("Accuracy: ", round((correct/total)*100, 3))
+        for epoch in range(self.train_batch):
+            for data in tqdm(train_set):    # 'data' is a batch of data
+                X, y = data                 # X is the batch of features, y is the batch of targets
+                self.net.zero_grad()        # sets gradients to 0 before loss calc
+                X = X.to(device)
+                output = self.net(X.view(-1, self.net.input_size))      # pass in the reshaped batch
+                output = output.cpu()
+                loss = self.loss_function(output, y)    # calc and grab the loss value
+                loss.backward()                         # apply this loss backwards thru the network's parameters
+                self.optimizer.step()                   # attempt to optimize weights to account for loss/gradients
+            self.net = self.net.to(device)
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for data in tqdm(test_set):
+                    X, y = data
+                    X = X.to(device)
+                    output = self.net(X.view(-1, self.net.input_size))
+                    output = output.cpu()
+                    for idx, i in enumerate(output):
+                        if torch.argmax(i) == y[idx]:
+                            correct += 1
+                        total += 1
+            print("Classifier is {}% accurate".format(int(correct / total * 100)))
 
 ## Save and load a model parameters:
 ##torch.save(net.state_dict(), PATH)

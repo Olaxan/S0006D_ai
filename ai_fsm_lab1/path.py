@@ -149,15 +149,19 @@ class Path:
         return abs(x2 - x1) + abs(y2 - y1)
 
     @staticmethod
-    def a_star_search(graph, start, goal, heuristic):
+    def a_star_search(graph, start, goal, heuristic=None):
+
+        cost_map = {start: 0}
+        came_from = {start: None}
 
         if start == goal:
-            return True, [goal]
+            return True, [goal], cost_map
+
+        if heuristic is None:
+            heuristic = Path.manhattan
 
         edges = PriorityQueue()
         edges.put(start, 0)
-        came_from = {start: None}
-        cost_map = {start: 0}
 
         while not edges.is_empty:
             node = edges.pop()
@@ -174,13 +178,3 @@ class Path:
                     came_from[next_node] = node
 
         return False, [], cost_map
-
-    @staticmethod
-    def plan(graph, start, goal, algorithm=Algorithms.A_STAR, heuristic=manhattan):
-        if algorithm is Path.Algorithms.A_STAR:
-            return Path.a_star_search(graph, start, goal, heuristic)
-        elif algorithm is Path.Algorithms.BREADTH_FIRST:
-            return Path.brute_force_search(graph, start, goal, True)
-        elif algorithm is Path.Algorithms.DEPTH_FIRST:
-            return Path.brute_force_search(graph, start, goal, False)
-        return False, []

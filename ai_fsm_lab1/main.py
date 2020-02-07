@@ -4,7 +4,7 @@ import pygame
 import torch
 from agent import Agent
 from world import World
-from nnet import CustomDataset, Net
+from nnet import NeuralHeuristic
 
 if __name__ == "__main__":
 
@@ -18,11 +18,7 @@ if __name__ == "__main__":
     WORLD.place_random("ltu", "travven", "dallas", "ica", "coop", "brännarvägen", "morö backe", "frögatan 154", "frögatan 181", "staregatan")
 
     if TRAIN_NET:
-        train = CustomDataset(WORLD, TRAIN_ITERATIONS)
-        test = CustomDataset(WORLD, TRAIN_ITERATIONS)
-        net = Net(WORLD.width, WORLD.height)
-        net.train(train, test)
-
+        heuristic = NeuralHeuristic(WORLD, 200)
 
     AGENTS = [
         Agent(WORLD, "Semlo", "frögatan 154", "coop"),

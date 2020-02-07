@@ -140,9 +140,6 @@ class GotoState(AgentState):
 
     revertable = False
 
-    algorithm = Path.Algorithms.A_STAR
-    heuristic = Path.manhattan
-
     meeting_refuse = [
         "Sorry, I'm on my way somewhere!",
         "No can do, sorry!",
@@ -153,7 +150,7 @@ class GotoState(AgentState):
 
     @staticmethod  # Estimate the time it will take to move to a new location using a-star
     def estimate(context, location, target):
-        success, path = Path.plan(context.world.graph, location, target, GotoState.algorithm, GotoState.heuristic)[:2]
+        success, path = Path.a_star_search(context.world.graph, location, target)[:2]
         return len(path) / context.speed if success else -1
 
     def __init__(self, location, on_arrive=None, on_fail=None):
@@ -188,7 +185,7 @@ class GotoState(AgentState):
         context.world.dispatch(arrive_msg)
 
     def enter(self, context):
-        success, self._path = Path.plan(context.world.graph, context.location, self._target, GotoState.algorithm, GotoState.heuristic)[:2]
+        success, self._path = Path.a_star_search(context.world.graph, context.location, self._target)[:2]
         if not success:
             self._abort(context)
 
