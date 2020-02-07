@@ -63,16 +63,26 @@ class Grid:
     def is_free(self, cell):
         return cell not in self.walls
 
+    def is_adjacent_free(self, from_cell, to_cell):
+        dx = to_cell[0] - from_cell[0]
+        dy = to_cell[1] - from_cell[1]
+        return self.is_free((from_cell[0] + dx, from_cell[1])) and self.is_free((from_cell[0], from_cell[1] + dy))
+
     def neighbours(self, cell):
         (x, y) = cell
         results = [
-            (x + 1, y), # right
-            (x, y - 1), # top
-            (x - 1, y), # left
-            (x, y + 1)  # bottom
+            (x + 1, y),     # right
+            (x + 1, y - 1), # top right
+            (x, y - 1),     # top
+            (x - 1, y - 1), # top left
+            (x - 1, y),     # left
+            (x - 1, y + 1), # bottom left
+            (x, y + 1),     # bottom
+            (x + 1, y + 1)  # bottom right
         ]
         results = filter(self.is_in_bounds, results)
         results = filter(self.is_free, results)
+        results = filter(lambda test: self.is_adjacent_free(test, cell), results)
         return results
 
 class WeightedGrid(Grid):
