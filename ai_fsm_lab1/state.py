@@ -18,9 +18,9 @@ class StateContext(ABC):
 
     # Change to a new state, optionally omitting exiting current state,
     # and preventing the new state from overwriting the current state "blip"
-    def change_state(self, state: State, do_exit=True, revertable=True):
+    def change_state(self, state: State, do_exit=True):
 
-        if revertable:
+        if self._current_state.revertable:
             self._previous_state = self._current_state
 
         if self._current_state is not None and do_exit:
@@ -45,7 +45,7 @@ class StateContext(ABC):
     # Moves the FSM ahead a step of specified size.
     # Step size is passed to update functions.
     def update(self, step = 1):
-        if self._global_state is not None and not self._current_state.ignore_global: 
+        if self._global_state is not None and not self._current_state.ignore_global:
             self._global_state.execute(self, step)
         if self._current_state is not None: 
             self._current_state.execute(self, step)
@@ -62,6 +62,9 @@ class State(ABC):
 
     # Can be set to tell the global state to exit early.
     ignore_global = False
+
+    # Set to false if the state is temporary, and should not be saved in previous state variable
+    revertable = True
 
     # Gets called once while entering the state
     def enter(self, context):

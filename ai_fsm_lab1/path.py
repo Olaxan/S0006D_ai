@@ -1,4 +1,8 @@
-import collections, heapq
+from __future__ import annotations
+import collections
+import heapq
+from enum import Enum, auto
+
 class QStack:
 
     def __init__(self, use_stack = False):
@@ -95,57 +99,88 @@ class WeightedGrid(Grid):
     def cost(self, cell):
         return self.weights.get(cell, self.default)
 
-def reconstruct(node_map, start, goal):
-    node = goal
-    path = []
-    while node is not start:
-        path.append(node)
-        node = node_map[node]
-    path.append(start)
-    path.reverse()
-    return path
+class Path:
 
-def brute_force_search(graph, start, goal, width_first=False):
-    edges = QStack(width_first)
-    edges.put(start)
-    node_map = {}
-    node_map[start] = None
-    while not edges.is_empty:
-        node = edges.pop()
+    class Algorithms(Enum):
+        A_STAR = auto()
+        DEPTH_FIRST = auto()
+        BREADTH_FIRST = auto()
 
-        if node is goal:
-            break
+    @staticmethod
+    def reconstruct(node_map, start, goal):
+        node = goal
+        path = []
 
-        for next_node in graph.neighbours(node):
-            if next_node not in node_map:
-                edges.put(next_node)
-                node_map[next_node] = node
+        while node is not start:
+            path.append(node)
+            node = node_map[node]
+        path.append(start)
+        path.reverse()
+        return path
 
-    return reconstruct(node_map, start, goal)
+    @staticmethod
+    def brute_force_search(graph, start, goal, breadth_first=False):
 
-def manhattan(start, goal):
-    x1, y1 = start
-    x2, y2 = goal
-    return abs(x2 - x1) + abs(y2 - y1)
+        if start == goal:
+            return True, [goal]
 
-def a_star_search(graph, start, goal, heuristic):
-    edges = PriorityQueue()
-    edges.put(start, 0)
-    came_from = {start: None}
-    cost_map = {start: 0}
+        edges = QStack(breadth_first)
+        edges.put(start)
+        node_map = {}
+        node_map[start] = None
 
-    while not edges.is_empty:
-        node = edges.pop()
+        while not edges.is_empty:
+            node = edges.pop()
 
-        if node == goal:
-            return True, reconstruct(came_from, start, goal)
+            if node == goal:
+                return True, Path.reconstruct(node_map, start, goal)
 
-        for next_node in graph.neighbours(node):
-            next_cost = cost_map[node] + graph.cost(next_node)
-            if next_node not in cost_map or next_cost < cost_map[next_node]:
-                cost_map[next_node] = next_cost
-                priority = next_cost + heuristic(goal, next_node)
-                edges.put(next_node, priority)
-                came_from[next_node] = node
+            for next_node in graph.neighbours(node):
+                if next_node not in node_map:
+                    edges.put(next_node)
+                    node_map[next_node] = node
 
-    return False, None
+        return False, []
+
+    @staticmethod
+    def manhattan(start, goal):
+        x1, y1 = start
+        x2, y2 = goal
+        return abs(x2 - x1) + abs(y2 - y1)
+
+    @staticmethod
+    def a_star_search(graph, start, goal, heuristic):
+
+        if start == goal:
+            return True, [goal]
+
+        edges = PriorityQueue()
+        edges.put(start, 0)
+        came_from = {start: None}
+        cost_map = {start: 0}
+
+        while not edges.is_empty:
+            node = edges.pop()
+
+            if node == goal:
+                return True, Path.reconstruct(came_from, start, goal), cost_map
+
+            for next_node in graph.neighbours(node):
+                next_cost = cost_map[node] + graph.cost(next_node)
+                if next_node not in cost_map or next_cost < cost_map[next_node]:
+                    cost_map[next_node] = next_cost
+                    priority = next_cost + heuristic(goal, next_node)
+                    edges.put(next_node, priority)
+                    came_from[next_node] = node
+
+        return False, [], cost_map
+
+    @staticmethod
+    def plan(graph, start, goal, algorithm=Algorithms.A_STAR, heuristic=manhattan):
+        if algorithm is Path.Algorithms.A_STAR:
+            return Path.a_star_search(graph, start, goal, heuristic)
+        elif algorithm is Path.Algorithms.BREADTH_FIRST:
+            return Path.brute_force_search(graph, start, goal, True)
+        elif algorithm is Path.Algorithms.DEPTH_FIRST:
+            return Path.brute_force_search(graph, start, goal, False)
+        return False, []

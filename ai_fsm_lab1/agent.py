@@ -4,7 +4,7 @@ from state import State, StateContext
 from world import World
 from telegram import Telegram, MessageTypes
 from utils import Clamped
-from path import a_star_search, manhattan
+from path import Path
 
 # Autonomous agent, with stats, name, and location in world
 class Agent(StateContext):
@@ -61,7 +61,7 @@ class Agent(StateContext):
         eta = GotoState.estimate(self, self.location, target)
 
         self.describe("going to {} for {} (ETA: {})".format(location.capitalize(), on_arrive.state_name, World.time_format_24(self.world.time + eta)))
-        self.change_state(GotoState(target, on_arrive, PathErrorState()), False, False)
+        self.change_state(GotoState(target, on_arrive, PathErrorState()), do_exit=False)
 
     # Describes an action in, the form of "[HH:MM] Agent is ...""
     def describe(self, action):
@@ -138,7 +138,10 @@ class GotoState(AgentState):
     state_name = "a walk"
     state_verb = "walking"
 
-    heuristic = manhattan
+    revertable = False
+
+    algorithm = Path.Algorithms.A_STAR
+    heuristic = Path.manhattan
 
     meeting_refuse = [
         "Sorry, I'm on my way somewhere!",
@@ -147,10 +150,10 @@ class GotoState(AgentState):
         "Maybe some other day?",
         "Ah, I'd love to, but try me again in a few hours"
     ]
-    
+
     @staticmethod  # Estimate the time it will take to move to a new location using a-star
     def estimate(context, location, target):
-        success, path = a_star_search(context.world.graph, location, target, GotoState.heuristic)
+        success, path = Path.plan(context.world.graph, location, target, GotoState.algorithm, GotoState.heuristic)[:2]
         return len(path) / context.speed if success else -1
 
     def __init__(self, location, on_arrive=None, on_fail=None):
@@ -161,9 +164,11 @@ class GotoState(AgentState):
         self._progress = 0
 
     def _has_arrived(self, context) -> bool:
+        """Check if agent has arrived at target"""
         return self._target[0] == context.x and self._target[1] == context.y
 
     def _finish(self, context):
+        """Call once agent is finished with path, to change state appropriately"""
         if self._on_arrive is not None:
             context.change_state(self._on_arrive)
         else:
@@ -173,6 +178,7 @@ class GotoState(AgentState):
         context.world.dispatch(arrive_msg)
 
     def _abort(self, context):
+        """Call if agent failed pathing, to revert states appropriately"""
         if self._on_fail is not None:
             context.change_state(self._on_fail)
         else:
@@ -182,7 +188,7 @@ class GotoState(AgentState):
         context.world.dispatch(arrive_msg)
 
     def enter(self, context):
-        success, self._path = a_star_search(context.world.graph, context.location, self._target, GotoState.heuristic)
+        success, self._path = Path.plan(context.world.graph, context.location, self._target, GotoState.algorithm, GotoState.heuristic)[:2]
         if not success:
             self._abort(context)
 
@@ -255,14 +261,17 @@ class SharedState(AgentState):
     def host_id(self):
         return self._party[0].agent_id if self.count > 0 else -1
 
-    def join_state(self, agent, do_exit = True):
+    def join_state(self, agent, do_exit=True):
         self._party.append(agent)
         agent.change_state(self, do_exit=do_exit)
 
-    def leave_state(self, agent):
+    def leave_state(self, agent, state=None):
         if agent in self._party:
             self._party.remove(agent)
-        agent.revert_state()
+        if state is None:
+            agent.revert_state()
+        else:
+            agent.change_state(state)
 
 class GlobalState(AgentState):
 
@@ -299,6 +308,7 @@ class GlobalState(AgentState):
     ]
 
     def execute(self, context, step):
+
         context.drunk.sub(1 * step)
         context.social.add((randint(0, 5) == 1) * step)
         context.bladder.add((randint(0, 5) == 1) * step)
@@ -324,7 +334,7 @@ class GlobalState(AgentState):
                     context.say_to(sender, choice(self.meeting_same_location).format(telegram.data.place.capitalize()))
                 else:
                     context.say_to(sender, choice(self.meeting_other_location).format(context.state.state_verb, int(60 * eta)))
-                    
+
                 reply_msg = Telegram(context.agent_id, telegram.sender_id, MessageTypes.MSG_MEETING_REPLY, True)
                 context.world.dispatch(reply_msg)
                 telegram.data.join_state(context)
@@ -477,7 +487,7 @@ class WorkEatState(AgentState):
         context.describe("returning to work")
 
     def execute(self, context, step):
-        
+
         if randint(0, context.hunger.max) == 1: context.say("Krunch!")
 
         context.hunger.sub(self.sandwich_units)
@@ -497,7 +507,7 @@ class WorkDrinkState(AgentState):
         context.describe("returning to work")
 
     def execute(self, context, step):
-        
+
         if randint(0, context.thirst.max) == 1: context.say("Slurp!")
 
         context.thirst.sub(10)
@@ -524,7 +534,7 @@ class WorkSleepState(AgentState):
         context.describe("returning to work")
 
     def execute(self, context, step):
-        
+
         if randint(0, context.sleep.max) == 1: context.say("Sörpl!")
 
         context.sleep.sub(self.coffee_units)
@@ -656,10 +666,11 @@ class EatState(AgentState):
 
     def execute(self, context, step):
 
-        if randint(0, context.hunger.max) == 1: context.say("Crunch!")
-        
+        if randint(0, context.hunger.max) == 1:
+            context.say("Crunch!")
+
         context.hunger.sub(2 * step)
-        
+
         if context.hunger.is_min:
             context.change_state(DrinkState())
             return
@@ -712,7 +723,7 @@ class DrinkState(AgentState):
     def execute(self, context, step):
 
         if randint(0, context.thirst.max) == 1: context.say("Slurp!")
-        
+
         context.thirst.sub(2 * step)
         context.drunk.add(3 * step)
         context.bladder.add(1 * step)
@@ -933,7 +944,7 @@ class MeetingState(SharedState):
             self._invitations = context.world.dispatch(meet_msg)
 
         if self._place is not None and not context.is_at(self._place):
-            context.goto(self._place, self)     
+            context.goto(self._place)
 
     def execute(self, context, step):
 
@@ -944,7 +955,7 @@ class MeetingState(SharedState):
         # If agent is alone in group after receiving all replies from all, leave the group
         if self._replies >= self._invitations and self.count == 1:
             context.say(choice(self._disband_group))
-            self.leave_state(context)
+            self.leave_state(context, SleepState())
             return
 
         # If agent is socially satisfied, leave the group and broadcast your departure
@@ -952,7 +963,7 @@ class MeetingState(SharedState):
             context.say(choice(self._leave_group))
             leave_msg = Telegram(context.agent_id, self.host_id, MessageTypes.MSG_MEETING_LEAVING)
             context.world.dispatch(leave_msg)
-            self.leave_state(context)
+            self.leave_state(context, SleepState())
             return
 
         # If more than one person is in the group, perform a conversation
@@ -980,12 +991,12 @@ class MeetingState(SharedState):
         # Count replies to your invitation
         if telegram.message == MessageTypes.MSG_MEETING_REPLY:
             self._replies += 1
-            if telegram.data == True:
+            if telegram.data:
                 if self.count == 1:
                     context.say(choice(self._meeting_accepted_first))
                 else:
                     context.say(choice(self._meeting_accepted_multi))
-            else: 
+            else:
                 context.say(choice(self._meeting_refused))
             return True
 

@@ -1,15 +1,28 @@
+"""Main file for demonstrang agent behaviour"""
 from random import seed, randint
 import pygame
+import torch
 from agent import Agent
 from world import World
+from nnet import CustomDataset, Net
 
 if __name__ == "__main__":
 
     WORLD_PATH = R"map\Map1.txt"
+    TRAIN_NET = True
+    TRAIN_ITERATIONS = 10
+
     seed(WORLD_PATH)
-    
+
     WORLD = World.from_map(WORLD_PATH)
     WORLD.place_random("ltu", "travven", "dallas", "ica", "coop", "brännarvägen", "morö backe", "frögatan 154", "frögatan 181", "staregatan")
+
+    if TRAIN_NET:
+        train = CustomDataset(WORLD, TRAIN_ITERATIONS)
+        test = CustomDataset(WORLD, TRAIN_ITERATIONS)
+        net = Net(WORLD.width, WORLD.height)
+        net.train(train, test)
+
 
     AGENTS = [
         Agent(WORLD, "Semlo", "frögatan 154", "coop"),
@@ -36,6 +49,10 @@ if __name__ == "__main__":
     COL_PLACE = pygame.color.Color(255, 200, 200)
 
     while True:
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                break
 
         for y in range(WORLD.height):
             for x in range(WORLD.width):
