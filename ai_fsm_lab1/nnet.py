@@ -47,9 +47,9 @@ class CustomDataset(Dataset):
         y = []
         for i in range(count):
             a, b = self.random_path()
-            x = x + [a]
-            y = y + [b]
-        return (x, y)
+            x.append(a)
+            y.append(b)
+        return x, y
 
     def __len__(self):
         return len(self.y)
@@ -76,7 +76,7 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
     @property
-    def input_size(self):
+    def input(self):
         return self._input_size
 
     @property
@@ -85,14 +85,12 @@ class Net(nn.Module):
 
 class NeuralHeuristic:
 
-    loss_function = torch.nn.CrossEntropyLoss()
-    optimizer = optim.Adam
-
-    def __init__(self, world, data_points, train_batch=200, test_batch=10):
+    def __init__(self, world, data_points, epochs=1000, train_batch=200, test_batch=10):
         self.net = Net(world.height * world.width)
-        self.optimizer = self.optimizer(self.net.parameters(), lr=0.001)
         self.train_batch = train_batch
         self.test_batch = test_batch
+        self.epochs = epochs
+        print("Net size is ", world.height * world.width)
         train_data = CustomDataset(world, data_points)
         test_data = CustomDataset(world, data_points)
         train_set = torch.utils.data.DataLoader(train_data, train_batch, shuffle=True)
@@ -101,22 +99,25 @@ class NeuralHeuristic:
 
     def train(self, train_set, test_set):
 
+        loss_function = torch.nn.CrossEntropyLoss()
+        optimizer = optim.Adam(self.net.parameters(), lr=0.001)
+
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print('Training net on {}'.format(device))
 
         self.net.to(device)
 
         #Teach the NN
-        for epoch in range(self.train_batch):
-            for data in tqdm(train_set):    # 'data' is a batch of data
-                X, y = data                 # X is the batch of features, y is the batch of targets
-                self.net.zero_grad()        # sets gradients to 0 before loss calc
+        for epoch in range(self.epochs):
+            for data in tqdm(train_set):        # 'data' is a batch of data
+                X, y = data                     # X is the batch of features, y is the batch of targets
+                self.net.zero_grad()            # sets gradients to 0 before loss calc
                 X = X.to(device)
-                output = self.net(X.view(-1, self.net.input_size))      # pass in the reshaped batch
+                output = self.net(X.view(-1, self.net.input))      # pass in the reshaped batch
                 output = output.cpu()
-                loss = self.loss_function(output, y)    # calc and grab the loss value
+                loss = loss_function(output, y)    # calc and grab the loss value
                 loss.backward()                         # apply this loss backwards thru the network's parameters
-                self.optimizer.step()                   # attempt to optimize weights to account for loss/gradients
+                optimizer.step()                   # attempt to optimize weights to account for loss/gradients
             self.net = self.net.to(device)
             correct = 0
             total = 0
@@ -124,7 +125,7 @@ class NeuralHeuristic:
                 for data in tqdm(test_set):
                     X, y = data
                     X = X.to(device)
-                    output = self.net(X.view(-1, self.net.input_size))
+                    output = self.net(X.view(-1, self.net.input))
                     output = output.cpu()
                     for idx, i in enumerate(output):
                         if torch.argmax(i) == y[idx]:
