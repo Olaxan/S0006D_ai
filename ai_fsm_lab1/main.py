@@ -8,7 +8,7 @@ from nnet import NeuralHeuristic, TrainingData
 
 if __name__ == "__main__":
 
-    WORLD_PATH = R"map\Map1.txt"
+    WORLD_PATH = R"map\Map2.txt"
     TRAIN_NET = True
 
     seed(WORLD_PATH)
@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     if TRAIN_NET:   # init neural pathing if desired
         NET_PATH = io.splitext(WORLD_PATH)[0]+".pth"
-        NET_DATA = TrainingData(epochs=5000, set_size=250)
+        NET_DATA = TrainingData(epochs=1000, set_size=500)
         NET_MODEL = NeuralHeuristic(WORLD, NET_PATH, NET_DATA)
         WORLD.heuristic = NET_MODEL
         NET_MODEL.save(NET_PATH)

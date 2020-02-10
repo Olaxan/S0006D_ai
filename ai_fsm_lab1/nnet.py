@@ -51,11 +51,11 @@ class PathDataset(Dataset):
 
 class Net(nn.Module):
 
-    def __init__(self, input_size, output_size=256):
+    def __init__(self, input_size, output_size):
         super().__init__()
         self.fc1 = nn.Linear(input_size, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, 64)
+        self.fc2 = nn.Linear(64, 120)
+        self.fc3 = nn.Linear(120, 64)
         self.fc4 = nn.Linear(64, output_size)
 
     def forward(self, x):
@@ -85,16 +85,15 @@ class NeuralHeuristic:
 
     def __init__(self, world, file_path=None, training_data: TrainingData = None):
         self.world = world
-        self.net = Net(world.height * world.width)
+        self.net = Net(world.height * world.width, 2 * world.height * world.width)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         if io.exists(file_path):
             self.load(file_path)
-            return
-
-        if training_data is not None:
+        elif training_data is not None:
             self.train(training_data)
-            return
+
+        self.net.eval()
 
     def train(self, data):
 
@@ -143,7 +142,6 @@ class NeuralHeuristic:
 
     def load(self, path):
         self.net.load_state_dict(torch.load(path))
-        self.net.eval()
 
     def __call__(self, start, goal):
         p1 = start

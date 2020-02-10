@@ -127,4 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-ai_fsm_lab1/map/Map1.pth
+
+# map files
+*.pth
