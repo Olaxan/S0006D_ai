@@ -1,5 +1,4 @@
 from random import randint, choice
-
 from state import State, StateContext
 from world import World
 from telegram import Telegram, MessageTypes
@@ -150,7 +149,7 @@ class GotoState(AgentState):
 
     @staticmethod  # Estimate the time it will take to move to a new location using a-star
     def estimate(context, location, target):
-        success, path = Path.a_star_search(context.world.graph, location, target)[:2]
+        success, path = context.world.get_path(location, target)
         return len(path) / context.speed if success else -1
 
     def __init__(self, location, on_arrive=None, on_fail=None):
@@ -185,7 +184,7 @@ class GotoState(AgentState):
         context.world.dispatch(arrive_msg)
 
     def enter(self, context):
-        success, self._path = Path.a_star_search(context.world.graph, context.location, self._target)[:2]
+        success, self._path = context.world.get_path(context.location, self._target)
         if not success:
             self._abort(context)
 
@@ -230,7 +229,7 @@ class GotoState(AgentState):
         return False
 
     @property
-    def route(self):
+    def path(self):
         return self._path
 
     @property
@@ -367,7 +366,7 @@ class WorkState(AgentState):
         "Back to running in the hamster wheel",
         "Another day, another Swedish Krona",
         "Hope today won't be too busy",
-        "Shit, where's my work agent_id?",
+        "Shit, where's my work ID?",
         "God, I hate this job",
         "Feeling pretty good about working today!",
         "Dreading having to work, today..."

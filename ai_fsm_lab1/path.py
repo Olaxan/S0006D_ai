@@ -143,10 +143,16 @@ class Path:
         return False, []
 
     @staticmethod
-    def manhattan(start, goal):
-        x1, y1 = start
-        x2, y2 = goal
-        return abs(x2 - x1) + abs(y2 - y1)
+    def manhattan(node, goal):
+        dx = abs(node[0] - goal[0])
+        dy = abs(node[1] - goal[1])
+        return dx + dy
+
+    @staticmethod
+    def diagonal(node, goal):
+        dx = abs(node[0] - goal[0])
+        dy = abs(node[1] - goal[1])
+        return (dx + dy) + (1.4 - 2) * min(dx, dy)
 
     @staticmethod
     def a_star_search(graph, start, goal, heuristic=None):
@@ -173,7 +179,7 @@ class Path:
                 next_cost = cost_map[node] + graph.cost(next_node)
                 if next_node not in cost_map or next_cost < cost_map[next_node]:
                     cost_map[next_node] = next_cost
-                    priority = next_cost + heuristic(goal, next_node)
+                    priority = next_cost + heuristic(next_node, goal)
                     edges.put(next_node, priority)
                     came_from[next_node] = node
 

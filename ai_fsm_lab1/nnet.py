@@ -1,7 +1,4 @@
-# pip3 install torch torchvision
-# pip3 install pytmx
-# pip3 install pygame
-
+import os.path as io
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,24 +8,19 @@ from tqdm import tqdm
 from path import Path
 
 
-class CustomDataset(Dataset):
+class PathDataset(Dataset):
     # A pytorch dataset class for holding data for a text classification task.
 
-    def __init__(self, world, data_points):
-        '''
-        Takes as input the name of a file containing sentences with a classification label (comma separated) in each line.
-        Stores the text data in a member variable X and labels in y
-        '''
-
+    def __init__(self, world, data_points, heuristic=None):
         self.world = world
-        self.X, self.y = self.populate_dataset(data_points)
+        self.X, self.y = self.populate_dataset(data_points, heuristic)
 
-    def random_path(self):
+    def random_path(self, heuristic):
         """Get a random A-star path in the world"""
 
         p1 = self.world.get_random_cell()
         p2 = self.world.get_random_cell()
-        success, path, costs = Path.a_star_search(self.world.graph, p1, p2)
+        success, path, costs = Path.a_star_search(self.world.graph, p1, p2, heuristic)
         cost = 0
         if success:
             for node in path:
@@ -40,13 +32,13 @@ class CustomDataset(Dataset):
 
         return grid, cost #y??
 
-    def populate_dataset(self, count):
+    def populate_dataset(self, count, heuristic):
         """Fill the dataset with random paths for training purposes"""
 
         x = []
         y = []
         for i in range(count):
-            a, b = self.random_path()
+            a, b = self.random_path(heuristic)
             x.append(a)
             y.append(b)
         return x, y
@@ -59,7 +51,7 @@ class CustomDataset(Dataset):
 
 class Net(nn.Module):
 
-    def __init__(self, input_size, output_size=10):
+    def __init__(self, input_size, output_size=256):
         super().__init__()
         self.fc1 = nn.Linear(input_size, 64)
         self.fc2 = nn.Linear(64, 64)
@@ -81,55 +73,89 @@ class Net(nn.Module):
     def output(self):
         return self.fc4.out_features
 
-class NeuralHeuristic:
+class TrainingData:
 
-    def __init__(self, world, data_points, epochs=1000, train_batch=200, test_batch=10):
-        self.net = Net(world.height * world.width)
+    def __init__(self, epochs=1000, set_size=200, train_batch=200, test_batch=10):
+        self.epochs = epochs
+        self.set_size = set_size
         self.train_batch = train_batch
         self.test_batch = test_batch
-        self.epochs = epochs
-        print("Net size is ", world.height * world.width)
-        train_data = CustomDataset(world, data_points)
-        test_data = CustomDataset(world, data_points)
-        train_set = torch.utils.data.DataLoader(train_data, train_batch, shuffle=True)
-        test_set = torch.utils.data.DataLoader(test_data, test_batch, shuffle=False)
-        self.train(train_set, test_set)
 
-    def train(self, train_set, test_set):
+class NeuralHeuristic:
+
+    def __init__(self, world, file_path=None, training_data: TrainingData = None):
+        self.world = world
+        self.net = Net(world.height * world.width)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        if io.exists(file_path):
+            self.load(file_path)
+            return
+
+        if training_data is not None:
+            self.train(training_data)
+            return
+
+    def train(self, data):
+
+        heuristic = self.world.heuristic
+
+        train_data = PathDataset(self.world, data.set_size, heuristic)
+        test_data = PathDataset(self.world, data.set_size, heuristic)
+        train_set = torch.utils.data.DataLoader(train_data, data.train_batch, shuffle=True)
+        test_set = torch.utils.data.DataLoader(test_data, data.test_batch, shuffle=False)
 
         loss_function = torch.nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.net.parameters(), lr=0.001)
 
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        print('Training net on {}'.format(device))
+        print('Training net on {}'.format(self.device))
 
-        self.net = self.net.to(device)
+        self.net = self.net.to(self.device)
 
-        for epoch in range(self.epochs):
-            for data in tqdm(train_set):        # 'data' is a batch of data
-                X, y = data                     # X is the batch of features, y is the batch of targets
-                self.net.zero_grad()            # sets gradients to 0 before loss calc
-                X = X.to(device)
+        estimate = 0
+        correct = 0
+        for epoch in tqdm(range(data.epochs)):
+            for data in train_set:      # 'data' is a batch of data
+                X, y = data             # X is the batch of features, y is the batch of targets
+                self.net.zero_grad()    # sets gradients to 0 before loss calc
+                X = X.to(self.device)
                 output = self.net(X.view(-1, self.net.input))      # pass in the reshaped batch
                 output = output.cpu()
-                print(y.shape)
                 loss = loss_function(output, y)     # calc and grab the loss value
                 loss.backward()                     # apply this loss backwards thru the network's parameters
                 optimizer.step()                    # attempt to optimize weights to account for loss/gradients
-            self.net = self.net.to(device)
-            correct = 0
-            total = 0
+            self.net = self.net.to(self.device)
             with torch.no_grad():
-                for data in tqdm(test_set):
+                for data in test_set:
                     X, y = data
-                    X = X.to(device)
+                    X = X.to(self.device)
                     output = self.net(X.view(-1, self.net.input))
                     output = output.cpu()
                     for idx, i in enumerate(output):
-                        if torch.argmax(i) == y[idx]:
-                            correct += 1
-                        total += 1
-            print("Classifier is {}% accurate".format(int(correct / total * 100)))
+                        correct += int(y[idx])
+                        estimate += int(torch.argmax(i))
+
+        error = 1 - (abs(estimate - correct) / correct)
+        print("Classifier is {}% accurate".format(int(error * 100)))
+
+    def save(self, path):
+        torch.save(self.net.state_dict(), path)
+
+    def load(self, path):
+        self.net.load_state_dict(torch.load(path))
+        self.net.eval()
+
+    def __call__(self, start, goal):
+        p1 = start
+        p2 = goal
+        grid = [[0 for col in range(self.world.width)] for row in range(self.world.height)]
+        grid[p1[0]][p1[1]] = 1
+        grid[p2[0]][p2[1]] = 1
+        X = torch.Tensor(grid)
+        X = X.to(self.device)
+        output = self.net(X.view(-1, self.net.input))
+        output = output.cpu()
+        return int(torch.argmax(output))
 
 ## Save and load a model parameters:
 ##torch.save(net.state_dict(), PATH)

@@ -1,5 +1,5 @@
 from telegram import Telegram
-from path import WeightedGrid
+from path import WeightedGrid, Path
 from random import randint
 
 def load_map(filename):
@@ -13,7 +13,7 @@ def load_map(filename):
     height = len(lines)
     walls = []
 
-    if height == 0: 
+    if height == 0:
         return False
 
     width = len(max(lines, key=len)) - 1
@@ -38,12 +38,13 @@ class World:
 
     _next_id = 0        # Static ID counter
 
-    def __init__(self, width, height, walls=None, locations=None):
+    def __init__(self, width, height, walls=None, locations=None, heuristic=Path.diagonal):
         self._messages = []
         self._time = 0
         self._graph = WeightedGrid(width, height, walls)
         self.agents = {}
         self.locations = locations if locations is not None else {}
+        self.heuristic = heuristic
 
     @classmethod
     def from_map(cls, filename, locations=None):
@@ -145,16 +146,19 @@ class World:
             if self._cell_is_free(cell):
                 return cell
 
+    def get_path(self, path_from, path_to):
+        return Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
+
     def place_random(self, *args):
         for place in args:
             self.locations[place] = self.get_random_cell()
 
     # Returns whether the specified agent is present at a location string
     def is_at(self, agent, location: str) -> bool:
-        
+
         if isinstance(agent, int):
             agent = self.get_agent(agent)
-            
+
         if agent is None:
             return False
 

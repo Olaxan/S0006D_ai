@@ -1,11 +1,10 @@
 """Main file for demonstating agent behaviour"""
-import os
+import os.path as io
 from random import seed, randint
 import pygame
-import torch
 from agent import Agent
 from world import World
-from nnet import NeuralHeuristic
+from nnet import NeuralHeuristic, TrainingData
 
 if __name__ == "__main__":
 
@@ -17,8 +16,13 @@ if __name__ == "__main__":
     WORLD = World.from_map(WORLD_PATH)
     WORLD.place_random("ltu", "travven", "dallas", "ica", "coop", "brännarvägen", "morö backe", "frögatan 154", "frögatan 181", "staregatan")
 
-    if TRAIN_NET:
-        heuristic = NeuralHeuristic(WORLD, 200, 200)
+    if TRAIN_NET:   # init neural pathing if desired
+        NET_PATH = io.splitext(WORLD_PATH)[0]+".pth"
+        NET_DATA = TrainingData(epochs=5000, set_size=250)
+        NET_MODEL = NeuralHeuristic(WORLD, NET_PATH, NET_DATA)
+        WORLD.heuristic = NET_MODEL
+        NET_MODEL.save(NET_PATH)
+
 
     AGENTS = [
         Agent(WORLD, "Semlo", "frögatan 154", "coop"),
@@ -69,7 +73,7 @@ if __name__ == "__main__":
             pygame.draw.rect(SCREEN, agent.color, rect)
 
             if agent.is_walking:
-                path = agent.state.route
+                path = agent.state.path
                 for p in range(len(path) - 1):
                     p1 = (int((path[p][0] + 0.5) * CELL_SIZE), int((path[p][1] + 0.5) * CELL_SIZE))
                     p2 = (int((path[p + 1][0] + 0.5) * CELL_SIZE), int((path[p + 1][1] + 0.5) * CELL_SIZE))
