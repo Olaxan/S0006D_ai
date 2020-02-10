@@ -1,4 +1,5 @@
-"""Main file for demonstrang agent behaviour"""
+"""Main file for demonstating agent behaviour"""
+import os
 from random import seed, randint
 import pygame
 import torch
@@ -10,7 +11,6 @@ if __name__ == "__main__":
 
     WORLD_PATH = R"map\Map1.txt"
     TRAIN_NET = True
-    TRAIN_ITERATIONS = 10
 
     seed(WORLD_PATH)
 
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     WORLD.place_random("ltu", "travven", "dallas", "ica", "coop", "brännarvägen", "morö backe", "frögatan 154", "frögatan 181", "staregatan")
 
     if TRAIN_NET:
-        heuristic = NeuralHeuristic(WORLD, 200)
+        heuristic = NeuralHeuristic(WORLD, 200, 200)
 
     AGENTS = [
         Agent(WORLD, "Semlo", "frögatan 154", "coop"),

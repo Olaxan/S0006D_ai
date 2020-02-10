@@ -35,8 +35,8 @@ class CustomDataset(Dataset):
                 cost += costs[node]
 
         grid = [[0 for col in range(self.world.width)] for row in range(self.world.height)]
-        grid[p1[0]][p1[1]] = 2
-        grid[p2[0]][p2[1]] = 2
+        grid[p1[0]][p1[1]] = 1
+        grid[p2[0]][p2[1]] = 1
 
         return grid, cost #y??
 
@@ -54,15 +54,13 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.y)
 
-    def __getitem__(self, index):
-        return torch.FloatTensor(self.X[index]),self.y[index]
+    def __getitem__(self, idx):
+        return torch.Tensor(self.X[idx]), self.y[idx]
 
 class Net(nn.Module):
 
     def __init__(self, input_size, output_size=10):
         super().__init__()
-        self._input_size = input_size
-        self._output_size = output_size
         self.fc1 = nn.Linear(input_size, 64)
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 64)
@@ -77,11 +75,11 @@ class Net(nn.Module):
 
     @property
     def input(self):
-        return self._input_size
+        return self.fc1.in_features
 
     @property
     def output(self):
-        return self._output_size
+        return self.fc4.out_features
 
 class NeuralHeuristic:
 
@@ -105,9 +103,8 @@ class NeuralHeuristic:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print('Training net on {}'.format(device))
 
-        self.net.to(device)
+        self.net = self.net.to(device)
 
-        #Teach the NN
         for epoch in range(self.epochs):
             for data in tqdm(train_set):        # 'data' is a batch of data
                 X, y = data                     # X is the batch of features, y is the batch of targets
@@ -115,9 +112,10 @@ class NeuralHeuristic:
                 X = X.to(device)
                 output = self.net(X.view(-1, self.net.input))      # pass in the reshaped batch
                 output = output.cpu()
-                loss = loss_function(output, y)    # calc and grab the loss value
-                loss.backward()                         # apply this loss backwards thru the network's parameters
-                optimizer.step()                   # attempt to optimize weights to account for loss/gradients
+                print(y.shape)
+                loss = loss_function(output, y)     # calc and grab the loss value
+                loss.backward()                     # apply this loss backwards thru the network's parameters
+                optimizer.step()                    # attempt to optimize weights to account for loss/gradients
             self.net = self.net.to(device)
             correct = 0
             total = 0
