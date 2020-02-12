@@ -3,7 +3,7 @@ from state import State, StateContext
 from world import World
 from telegram import Telegram, MessageTypes
 from utils import Clamped
-from path import Path
+from config import EVAL_MODE
 
 # Autonomous agent, with stats, name, and location in world
 class Agent(StateContext):
@@ -64,21 +64,24 @@ class Agent(StateContext):
 
     # Describes an action in, the form of "[HH:MM] Agent is ...""
     def describe(self, action):
-        print("[{}] {} is {}".format(self.world.time_24, self.name, action))
+        if not EVAL_MODE:
+            print("[{}] {} is {}".format(self.world.time_24, self.name, action))
 
     # Describes what the agent is saying, in the form of "[HH:MM] Agent: '...'""
     def say(self, phrase):
-        if self.drunk.is_min:
-            print("[{}] {}: '{}'".format(self.world.time_24, self.name, phrase))
-        else:
-            print("[{}] {}: '*hic!* {}'".format(self.world.time_24, self.name, phrase))
+        if not EVAL_MODE:
+            if self.drunk.is_min:
+                print("[{}] {}: '{}'".format(self.world.time_24, self.name, phrase))
+            else:
+                print("[{}] {}: '*hic!* {}'".format(self.world.time_24, self.name, phrase))
 
     # Describes what the agent is saying to someone else, in the form of "[HH:MM] Agent, to Agent: '...'"
     def say_to(self, other, phrase):
-        if self.drunk.is_min:
-            print("[{}] {}, to {}: '{}'".format(self.world.time_24, self.name, other.name, phrase))
-        else:
-            print("[{}] {}, to {}: '*hic!* {}'".format(self.world.time_24, self.name, other.name, phrase))
+        if not EVAL_MODE:
+            if self.drunk.is_min:
+                print("[{}] {}, to {}: '{}'".format(self.world.time_24, self.name, other.name, phrase))
+            else:
+                print("[{}] {}, to {}: '*hic!* {}'".format(self.world.time_24, self.name, other.name, phrase))
 
     @property   # Returns agent agent_id, immutable
     def agent_id(self):
@@ -615,7 +618,9 @@ class SleepState(AgentState):
             context.world.dispatch(reply_msg)
             return True
         if telegram.message == MessageTypes.MSG_WAKEUP:
-            print(choice(self.alarm))
+            if not EVAL_MODE:
+                print(choice(self.alarm))
+
             context.say(choice(self.stopping_sleep))
             context.change_state(WorkState())
             return True

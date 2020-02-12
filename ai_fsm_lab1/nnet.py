@@ -93,6 +93,7 @@ class NeuralHeuristic:
         elif training_data is not None:
             self.train(training_data)
 
+        self.net.to(self.device)
         self.net.eval()
 
     def train(self, data):
@@ -154,11 +155,4 @@ class NeuralHeuristic:
         output = self.net(X.view(-1, self.net.input))
         output = output.cpu()
         return int(torch.argmax(output))
-
-## Save and load a model parameters:
-##torch.save(net.state_dict(), PATH)
-##
-##net = Net()   #TheModelClass(*args, **kwargs)
-##net.load_state_dict(torch.load(PATH))
-##net.eval()
 

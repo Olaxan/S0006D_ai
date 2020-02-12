@@ -1,6 +1,11 @@
+""" Represent a 2D world with agents and locations """
+
+import timeit
+from random import randint
 from telegram import Telegram
 from path import WeightedGrid, Path
-from random import randint
+
+from config import EVAL_MODE
 
 def load_map(filename):
     try:
@@ -33,8 +38,8 @@ def load_map(filename):
 
     return width, height, walls, start, goal
 
-# Class for holding locations, as well as managing agents in the world, and providing messaging
 class World:
+    """ Class for holding locations, as well as managing agents in the world, and providing messaging """
 
     _next_id = 0        # Static ID counter
 
@@ -42,6 +47,8 @@ class World:
         self._messages = []
         self._time = 0
         self._graph = WeightedGrid(width, height, walls)
+        self._perf_path_time = 0
+        self._perf_path_queries = 0
         self.agents = {}
         self.locations = locations if locations is not None else {}
         self.heuristic = heuristic
@@ -89,6 +96,14 @@ class World:
     @property
     def graph(self) -> WeightedGrid:
         return self._graph
+
+    @property
+    def path_time(self):
+        return self._perf_path_time
+
+    @property
+    def path_queries(self):
+        return self._perf_path_queries
 
     # Formats a given time as HH:MM
     @staticmethod
@@ -147,7 +162,13 @@ class World:
                 return cell
 
     def get_path(self, path_from, path_to):
-        return Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
+        start = timeit.default_timer()
+        path = Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
+        end = timeit.default_timer()
+        self._perf_path_time += (end - start)
+        self._perf_path_queries += 1
+        return path
+
 
     def place_random(self, *args):
         for place in args:
@@ -168,11 +189,12 @@ class World:
     # Move the world forward a step of the specified size, update all agents
     def step_forward(self, step = 1):
 
-        if self.time < step:
-            print("\n ===[ Day {} ]======================================================= ".format(int(self._time // 24)))
+        if not EVAL_MODE:
+            if self.time < step:
+                print("\n ===[ Day {} ]======================================================= ".format(int(self._time // 24)))
 
-        if self._time % step == 0:
-            print()
+            if self._time % step == 0:
+                print()
 
         self._time += step
         self._dispatch_delayed()
