@@ -50,8 +50,10 @@ class WeightedGraph:
         self.default = default
 
     def neighbours(self, node):
-        cost = self.weights.get(node, self.default)
-        return self.edges[node], cost
+        return self.edges[node]
+
+    def cost(self, node):
+        return self.weights.get(node, self.default)
 
 class Grid:
 

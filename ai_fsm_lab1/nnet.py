@@ -20,7 +20,7 @@ class PathDataset(Dataset):
 
         p1 = self.world.get_random_cell()
         p2 = self.world.get_random_cell()
-        success, path, cost = Path.a_star_search(self.world.graph, p1, p2, heuristic)
+        cost = Path.a_star_search(self.world.graph, p1, p2, heuristic)[2]
         grid = [[0 for col in range(self.world.width)] for row in range(self.world.height)]
         grid[p1[0]][p1[1]] = 1
         grid[p2[0]][p2[1]] = 1
