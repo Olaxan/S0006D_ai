@@ -21,9 +21,7 @@ class PathDataset(Dataset):
         p1 = self.world.get_random_cell()
         p2 = self.world.get_random_cell()
         cost = Path.a_star_search(self.world.graph, p1, p2, heuristic)[2]
-        grid = [[0 for col in range(self.world.width)] for row in range(self.world.height)]
-        grid[p1[0]][p1[1]] = 1
-        grid[p2[0]][p2[1]] = 1
+        grid = [p1, p2]
 
         return grid, cost #y??
 
@@ -37,10 +35,6 @@ class PathDataset(Dataset):
             x.append(a)
             y.append(b)
         return x, y
-
-    @property
-    def input(self):
-        return self.world.width * self.world.height
 
     @property
     def labels(self):
@@ -90,7 +84,7 @@ class NeuralHeuristic:
         self.world = world
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        if io.exists(file_path):
+        if file_path is not None and io.exists(file_path):
             self.load(file_path)
         elif training_data is not None:
             self.train(training_data)
@@ -109,9 +103,7 @@ class NeuralHeuristic:
         train_set = torch.utils.data.DataLoader(train_data, data.train_batch, shuffle=True)
         test_set = torch.utils.data.DataLoader(test_data, data.test_batch, shuffle=False)
 
-        assert train_data.input == test_data.input, "Input data mismatch!"
-
-        self.net = Net(train_data.input, max(train_data.labels, test_data.labels) + 1)
+        self.net = Net(4, max(train_data.labels, test_data.labels) + 1)
         loss_function = torch.nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.net.parameters(), lr=0.001)
 
@@ -161,9 +153,7 @@ class NeuralHeuristic:
     def __call__(self, start, goal):
         p1 = start
         p2 = goal
-        grid = [[0 for col in range(self.world.width)] for row in range(self.world.height)]
-        grid[p1[0]][p1[1]] = 1
-        grid[p2[0]][p2[1]] = 1
+        grid = [p1, p2]
         X = torch.Tensor(grid)
         X = X.to(self.device)
         output = self.net(X.view(-1, self.net.input))
