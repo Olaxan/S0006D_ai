@@ -161,7 +161,7 @@ class Path:
         came_from = {start: None}
 
         if start == goal:
-            return True, [goal], cost_map
+            return True, [goal], 0
 
         if heuristic is None:
             heuristic = Path.manhattan
@@ -173,7 +173,7 @@ class Path:
             node = edges.pop()
 
             if node == goal:
-                return True, Path.reconstruct(came_from, start, goal), cost_map
+                return True, Path.reconstruct(came_from, start, goal), cost_map[node]
 
             for next_node in graph.neighbours(node):
                 next_cost = cost_map[node] + graph.cost(next_node)
@@ -183,4 +183,4 @@ class Path:
                     edges.put(next_node, priority)
                     came_from[next_node] = node
 
-        return False, [], cost_map
+        return False, [], cost_map[node]

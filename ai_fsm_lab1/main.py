@@ -15,6 +15,14 @@ def draw_world():
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             break
+        if event.type == pygame.MOUSEBUTTONUP:
+            pos = pygame.mouse.get_pos()
+            cell = (pos[0] // CELL_SIZE, pos[1] // CELL_SIZE)
+            if WORLD.graph.is_free(cell):
+                WORLD.graph.walls.append(cell)
+            else:
+                WORLD.graph.walls.remove(cell)
+
 
     for y in range(WORLD.height):
         for x in range(WORLD.width):
@@ -51,7 +59,7 @@ if __name__ == "__main__":
     WORLD.place_random("ltu", "travven", "dallas", "ica", "coop", "brännarvägen", "morö backe", "frögatan 154", "frögatan 181", "staregatan")
 
     if TRAIN_NET:   # Init neural pathing if desired
-        NET_PATH = "{}_{}-{}-{}-{}.pth".format(io.splitext(WORLD_PATH)[0], NET_DATA.epochs, NET_DATA.set_size, NET_DATA.train_batch, NET_DATA.test_batch)
+        NET_PATH = "{}_{}-{}.pth".format(io.splitext(WORLD_PATH)[0], NET_DATA.epochs, NET_DATA.set_size)
         NET_MODEL = NeuralHeuristic(WORLD, NET_PATH, NET_DATA)
         WORLD.heuristic = NET_MODEL
         NET_MODEL.save(NET_PATH)

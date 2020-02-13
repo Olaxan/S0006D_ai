@@ -2,10 +2,10 @@
 
 from nnet import TrainingData
 
-WORLD_PATH = R"map\Map1.txt"
-TRAIN_NET = True
-NET_DATA = TrainingData(epochs=1000, set_size=20000, test_batch=100)
-EVAL_MODE = True
+WORLD_PATH = R"map\Map2.txt"
+TRAIN_NET = False
+NET_DATA = TrainingData(epochs=1000, set_size=2048, test_batch=100)
+EVAL_MODE = False
 EVAL_STEPS = 1000
 FRAME_DELAY = 500
 STEP_SIZE = 0.25

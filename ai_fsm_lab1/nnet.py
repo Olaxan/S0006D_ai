@@ -20,12 +20,7 @@ class PathDataset(Dataset):
 
         p1 = self.world.get_random_cell()
         p2 = self.world.get_random_cell()
-        success, path, costs = Path.a_star_search(self.world.graph, p1, p2, heuristic)
-        cost = 0
-        if success:
-            for node in path:
-                cost += costs[node]
-
+        success, path, cost = Path.a_star_search(self.world.graph, p1, p2, heuristic)
         grid = [[0 for col in range(self.world.width)] for row in range(self.world.height)]
         grid[p1[0]][p1[1]] = 1
         grid[p2[0]][p2[1]] = 1
@@ -37,11 +32,19 @@ class PathDataset(Dataset):
 
         x = []
         y = []
-        for i in range(count):
+        for i in tqdm(range(count)):
             a, b = self.random_path(heuristic)
             x.append(a)
             y.append(b)
         return x, y
+
+    @property
+    def input(self):
+        return self.world.width * self.world.height
+
+    @property
+    def labels(self):
+        return max(self.y)
 
     def __len__(self):
         return len(self.y)
@@ -85,7 +88,6 @@ class NeuralHeuristic:
 
     def __init__(self, world, file_path=None, training_data: TrainingData = None):
         self.world = world
-        self.net = Net(world.height * world.width, 2 * world.height * world.width)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         if io.exists(file_path):
@@ -100,11 +102,16 @@ class NeuralHeuristic:
 
         heuristic = self.world.heuristic
 
+        print("Generating training data...")
         train_data = PathDataset(self.world, data.set_size, heuristic)
+        print("Generating test data...")
         test_data = PathDataset(self.world, data.set_size, heuristic)
         train_set = torch.utils.data.DataLoader(train_data, data.train_batch, shuffle=True)
         test_set = torch.utils.data.DataLoader(test_data, data.test_batch, shuffle=False)
 
+        assert train_data.input == test_data.input, "Input data mismatch!"
+
+        self.net = Net(train_data.input, max(train_data.labels, test_data.labels) + 1)
         loss_function = torch.nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.net.parameters(), lr=0.001)
 
@@ -139,10 +146,17 @@ class NeuralHeuristic:
         print("Classifier is {}% accurate".format(int(error * 100)))
 
     def save(self, path):
-        torch.save(self.net.state_dict(), path)
+        torch.save({
+            'model_dict':self.net.state_dict(),
+            'model_in':self.net.input,
+            'model_out':self.net.output}, path)
 
     def load(self, path):
-        self.net.load_state_dict(torch.load(path))
+        checkpoint = torch.load(path)
+        in_size = checkpoint['model_in']
+        out_size = checkpoint['model_out']
+        self.net = Net(in_size, out_size)
+        self.net.load_state_dict(checkpoint['model_dict'])
 
     def __call__(self, start, goal):
         p1 = start
