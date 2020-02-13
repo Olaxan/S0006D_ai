@@ -5,7 +5,7 @@ from random import randint
 from telegram import Telegram
 from path import WeightedGrid, Path
 
-from config import EVAL_MODE
+from config import EVAL_MODE, PATH_MODE
 
 def load_map(filename):
     try:
@@ -162,8 +162,18 @@ class World:
                 return cell
 
     def get_path(self, path_from, path_to):
-        start = timeit.default_timer()
-        path = Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
+        if PATH_MODE == 0:
+            start = timeit.default_timer()
+            path = Path.brute_force_search(self.graph, path_from, path_to, False)
+        elif PATH_MODE == 1:
+            start = timeit.default_timer()
+            path = Path.brute_force_search(self.graph, path_from, path_to, True)
+        elif PATH_MODE == 2:
+            start = timeit.default_timer()
+            path = Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
+        else:
+             return None
+
         end = timeit.default_timer()
         self._perf_path_time += (end - start)
         self._perf_path_queries += 1

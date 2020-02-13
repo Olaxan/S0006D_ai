@@ -3,6 +3,7 @@
 from nnet import TrainingData
 
 WORLD_PATH = R"map\Map2.txt"
+PATH_MODE = 2
 TRAIN_NET = False
 NET_DATA = TrainingData(epochs=1000, set_size=2048, test_batch=100)
 EVAL_MODE = False
