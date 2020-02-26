@@ -1,15 +1,17 @@
 """Main file for demonstating agent behaviour"""
 from __future__ import annotations
+
 import os.path as io
-from random import seed, randint
+from random import randint, seed
 
 import pygame
-from agent import Agent
-from world import World
-from nnet import NeuralHeuristic
 from tqdm import tqdm
 
+from agent import Agent
 from config import *
+from nnet import NeuralHeuristic
+from world import World
+
 
 def draw_world():
     for event in pygame.event.get():
@@ -94,4 +96,3 @@ if __name__ == "__main__":
         print("Pathfinding took {:.4} seconds over {} queries (~{:.4} s/q)".format(WORLD.path_time, WORLD.path_queries, per_query))
 
 # ============== FUNCTIONS ================
-

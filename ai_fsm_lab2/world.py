@@ -1,11 +1,41 @@
 """ Represent a 2D world with agents and locations """
 
-import timeit
 from random import randint
-from telegram import Telegram
-from path import WeightedGrid, Path
 
-from config import EVAL_MODE, PATH_MODE
+from path import WeightedGrid, Path
+from config import WORLD_SCALE, WORLD_TREES_PER_CELL
+from telegram import Telegram
+
+class WorldGrid(WeightedGrid):
+
+    def __init__(self, width, height):
+        super().__init__(width, height)
+        self.water = []
+        self.swamp = []
+        self.trees = []
+
+    def is_free(self, cell):
+        return cell not in self.water and cell not in self.walls
+
+    def add_block(self, to, cell, size, rand_count=None):
+        x, y = cell
+        r = range(size ** 2)
+
+        if rand_count is not None:
+            r = [randint(0, size ** 2) for i in range(rand_count)]
+
+        for i in r:
+            to.append((x + (i % size), y + (i // size)))
+
+    def set_block(self, to, cell, size, value, rand_count=None):
+        x, y = cell
+        r = range(size ** 2)
+
+        if rand_count is not None:
+            r = [randint(0, size ** 2) for i in range(rand_count)]
+
+        for i in r:
+            to[(x + (i % size), y + (i // size))] = value
 
 def load_map(filename):
     try:
@@ -16,73 +46,76 @@ def load_map(filename):
     lines = file.readlines()
     file.close()
     height = len(lines)
-    walls = []
 
     if height == 0:
         return False
 
     width = len(max(lines, key=len)) - 1
 
+    grid = WorldGrid(width * WORLD_SCALE, height * WORLD_SCALE)
+
     y = 0
     for line in lines:
         x = 0
         for char in line:
-            if char == 'X':
-                walls.append((x, y))
-            elif char == 'S':
-                start = (x, y)
+            if char == 'B':
+                grid.add_block(grid.walls, (x, y), WORLD_SCALE)
             elif char == 'G':
-                goal = (x, y)
+                grid.add_block(grid.swamp, (x, y), WORLD_SCALE)
+                grid.set_block(grid.weights, (x, y), WORLD_SCALE, 2)
+            elif char == 'V':
+                grid.add_block(grid.water, (x, y), WORLD_SCALE)
+            elif char == 'T':
+                grid.add_block(grid.trees, (x, y), WORLD_SCALE, WORLD_TREES_PER_CELL)
             x += 1
         y += 1
 
-    return width, height, walls, start, goal
+    return grid
 
 class World:
-    """ Class for holding locations, as well as managing agents in the world, and providing messaging """
+    """ Class for holding locations,
+    as well as managing agents in the world, and providing messaging """
 
     _next_id = 0        # Static ID counter
 
-    def __init__(self, width, height, walls=None, locations=None, heuristic=Path.diagonal):
+    def __init__(self, grid, locations=None, heuristic=None):
         self._messages = []
         self._time = 0
-        self._graph = WeightedGrid(width, height, walls)
-        self._perf_path_time = 0
-        self._perf_path_queries = 0
+        self._graph = grid
         self.agents = {}
-        self.locations = locations if locations is not None else {}
         self.heuristic = heuristic
+        self.locations = locations if locations is not None else {}
 
     @classmethod
-    def from_map(cls, filename, locations=None):
-        width, height, walls = load_map(filename)[:3]
-        return cls(width, height, walls, locations)
+    def from_map(cls, filename, locations=None, heuristic=None):
+        grid = load_map(filename)
+        return cls(grid, locations, heuristic)
 
-    # Returns the time as an hour decimal wrapped to 24 hours
     @property
     def time(self):
+        """Returns the time as an hour decimal wrapped to 24 hours"""
         return ((self._time % 24) + 24) % 24
 
-    # Returns the time formatted as HH:MM
     @property
     def time_24(self) -> str:
+        """Returns the time formatted as HH:MM"""
         return self.time_format_24(self._time)
 
-    # Returns the current hour as an integer, in a 24 hour format
     @property
     def hour_24(self) -> int:
+        """Returns the current hour as an integer, in a 24 hour format"""
         return int(self._time % 24)
 
-    # Returns the current hour as an integer, in a 12 hour format, as well as AM or PM
     @property
     def hour_12(self) -> (int, str):
+        """Returns the current hour as an integer, in a 12 hour format, as well as AM or PM"""
         hour = int(self._time % 12)
         am = "AM" if self.time < 12 else "PM"
         return (hour, am)
 
-    # Returns the current number of minutes past the hour
     @property
     def minutes(self) -> int:
+        """Returns the current number of minutes past the hour"""
         return int(60.0 * float(self._time % 1.0))
 
     @property
@@ -97,53 +130,45 @@ class World:
     def graph(self) -> WeightedGrid:
         return self._graph
 
-    @property
-    def path_time(self):
-        return self._perf_path_time
-
-    @property
-    def path_queries(self):
-        return self._perf_path_queries
-
-    # Formats a given time as HH:MM
     @staticmethod
     def time_format_24(time) -> str:
+        """Formats a given time as HH:MM"""
         hour = int(time % 24)
         minute = int(60.0 * float(time % 1.0))
         return "{:02d}:{:02d}".format(hour, minute)
 
-    # Internal - check if ID is free
     def _id_is_free(self, agent_id: int) -> bool:
+        """Internal - check if ID is free"""
         return agent_id not in self.agents
 
-    # Internal - check if location cell is free
     def _cell_is_free(self, cell) -> bool:
+        """Internal - check if location cell is free"""
         return cell not in self.locations.values() and self.graph.is_free(cell)
 
-    # Internal - dispatch all due messages in queue
     def _dispatch_delayed(self):
+        """Internal - dispatch all due messages in queue"""
         for message in self._messages:
             if self._time >= message.dispatch_time:
                 self.dispatch(message)
                 self._messages.remove(message)
 
-    # Register an agent and call initializer, returning agent's assigned ID
     def register_agent(self, agent) -> int:
+        """Register an agent and call initializer, returning agent's assigned ID"""
         self.agents[self._next_id] = agent
         self._next_id += 1
         agent.init()
         return self._next_id - 1
 
-    # Remove an agent from the dictionary
     def remove_agent(self, agent_id: int):
+        """Remove an agent from the dictionary"""
         if agent_id in self.agents: self.agents.pop(agent_id)
 
-    # Returns an agent when provided with valid ID
     def get_agent(self, agent_id: int):
+        """Returns an agent when provided with valid ID"""
         return self.agents[agent_id] if agent_id in self.agents else None
 
-    # Return list of agents matching ID:s in args
-    def getagents(self, *agent_ids):
+    def get_agents(self, *agent_ids):
+        """Return list of agents matching ID:s in args"""
         agents = []
         for agent_id in agent_ids:
             agent = self.get_agent(agent_id)
@@ -151,8 +176,8 @@ class World:
                 agents.append(agent)
         return agents
 
-    # Returns a location coordinate when provided with location string
     def get_location(self, name: str) -> (int, int):
+        """Returns a location coordinate when provided with location string"""
         return self.locations.get(name, (0, 0))
 
     def get_random_cell(self):
@@ -162,30 +187,14 @@ class World:
                 return cell
 
     def get_path(self, path_from, path_to):
-        if PATH_MODE == 0:
-            start = timeit.default_timer()
-            path = Path.brute_force_search(self.graph, path_from, path_to, False)
-        elif PATH_MODE == 1:
-            start = timeit.default_timer()
-            path = Path.brute_force_search(self.graph, path_from, path_to, True)
-        elif PATH_MODE == 2:
-            start = timeit.default_timer()
-            path = Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
-        else:
-             return None
-
-        end = timeit.default_timer()
-        self._perf_path_time += (end - start)
-        self._perf_path_queries += 1
-        return path
-
+        return Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
 
     def place_random(self, *args):
         for place in args:
             self.locations[place] = self.get_random_cell()
 
-    # Returns whether the specified agent is present at a location string
     def is_at(self, agent, location: str) -> bool:
+        """Returns whether the specified agent is present at a location string"""
 
         if isinstance(agent, int):
             agent = self.get_agent(agent)
@@ -196,15 +205,8 @@ class World:
         x, y = agent.location
         return (x, y) == self.locations[location]
 
-    # Move the world forward a step of the specified size, update all agents
-    def step_forward(self, step = 1):
-
-        if not EVAL_MODE:
-            if self.time < step:
-                print("\n ===[ Day {} ]======================================================= ".format(int(self._time // 24)))
-
-            if self._time % step == 0:
-                print()
+    def step_forward(self, step=1):
+        """Move the world forward a step of the specified size, update all agents"""
 
         self._time += step
         self._dispatch_delayed()
@@ -212,8 +214,8 @@ class World:
         for agent in self.agents.values():
             agent.update(step)
 
-    # Dispatch a message with optional delay
     def dispatch(self, telegram: Telegram, delay=0):
+        """Dispatch a message with optional delay"""
 
         agents = []
 
@@ -227,7 +229,7 @@ class World:
                 if agent is not None:
                     agents.append(agent)
             else:
-                agents = self.getagents(*telegram.receiver_id)
+                agents = self.get_agents(*telegram.receiver_id)
 
         if delay <= 0:
             for agent in agents:
@@ -238,8 +240,8 @@ class World:
         self._messages.append(telegram)
         return 0
 
-    # Set a message for scheduled dispatch, the current or next day
     def dispatch_scheduled(self, time, telegram: Telegram):
+        """Set a message for scheduled dispatch, the current or next day"""
         if time < self.time:
             time += (24 - self.time)
         else:

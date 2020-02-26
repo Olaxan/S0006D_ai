@@ -1,6 +1,8 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
+from ai_path.path import WeightedGraph, Path
+
 class WorldState():
 
     _state: dict = {}
@@ -84,37 +86,19 @@ class Planner():
         self._actions = actions
         self._world = state
 
-    def plan(self, goal: WorldState) -> list:
+    def plan(self, goal: WorldState):
 
-        for a in self._actions:
-            a.do_reset()
+        usable = set()
 
-        usable: set
-        for a in self._actions:
-            if a.checkProcedural(): usable.add(a)
+        for action in self._actions:
+            action.do_reset()
+            if action.checkProcedural():
+                usable.add(action)
 
-        leaves: list
-        result = list
-        cheapest = None
-        start = Node(None, 0, self._world, None)
-        success = self.graph(start, leaves, self._actions, goal)
+        tree = self.graph(usable, goal)
+        Path.a_star_search(tree, None, None)
 
-        if not success: return None
-
-        for leaf in leaves:
-            if cheapest == None or leaf.cost < cheapest.cost:
-                cheapest = leaf
-
-        n = cheapest
-        while n != None:
-            if n.action != None: result.insert(0, n.action)
-            n = n.parent
-
-        return result
-
-    def graph(self, start: Node, leaves: list, actions: set, goal: set) -> bool:
-        
-        found = False
+    def graph(self, actions, goal) -> bool:
 
         for action in actions:
             pass
