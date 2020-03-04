@@ -1,12 +1,12 @@
 """ Contains program configuration """
 
-from ai_path.nnet import TrainingData
+from nnet import TrainingData
 
-WORLD_PATH = R"map\Map2.txt"
+WORLD_PATH = R"C:\Users\efiilj-7-local\Documents\Source\S0006D_ai\ai_fsm_lab1\map\Map1.txt"
 PATH_MODE = 2
 TRAIN_NET = False
 NET_DATA = TrainingData(epochs=1000, set_size=2048, test_batch=100)
-EVAL_MODE = False
+EVAL_MODE = True
 EVAL_STEPS = 1000
 FRAME_DELAY = 500
 STEP_SIZE = 0.25

@@ -1,23 +1,44 @@
 """ Represent a 2D world with agents and locations """
 
+from enum import Enum, auto
 from random import randint
 
 from path import WeightedGrid, Path
-from config import WORLD_SCALE, WORLD_TREES_PER_CELL
+from config import *
 from telegram import Telegram
+
+class TerrainTypes(Enum):
+        Ground  = COL_DARK_CELL
+        Rock    = COL_WALL
+        Water   = COL_WATER
+        Swamp   = COL_SWAMP
+        Tree    = COL_TREE
 
 class WorldGrid(WeightedGrid):
 
     def __init__(self, width, height):
-        super().__init__(width, height)
-        self.water = []
-        self.swamp = []
-        self.trees = []
+        self.width = width
+        self.height = height
+        self.terrain = [(TerrainTypes.Ground, 1)] * (width * height)
+
+    def cost(self, cell):
+        x, y = cell
+        return self.terrain[x + self.width * y][0]
 
     def is_free(self, cell):
-        return cell not in self.water and cell not in self.walls
+        return self.cost(cell) != 0
 
-    def add_block(self, to, cell, size, rand_count=None):
+    def set_terrain(self, cell, terrain, weight=1):
+        x, y = cell
+        self.terrain[x + self.width * y] = (terrain, weight)
+
+    def get_terrain(self, cell, cell_y=None):
+        if cell_y is None:
+            return self.terrain[cell]
+        else:
+            return self.terrain[cell + self.width * cell_y]
+
+    def set_terrain_block(self, cell, size, terrain, weight=1, rand_count=None):
         x, y = cell
         r = range(size ** 2)
 
@@ -25,17 +46,7 @@ class WorldGrid(WeightedGrid):
             r = [randint(0, size ** 2) for i in range(rand_count)]
 
         for i in r:
-            to.append((x + (i % size), y + (i // size)))
-
-    def set_block(self, to, cell, size, value, rand_count=None):
-        x, y = cell
-        r = range(size ** 2)
-
-        if rand_count is not None:
-            r = [randint(0, size ** 2) for i in range(rand_count)]
-
-        for i in r:
-            to[(x + (i % size), y + (i // size))] = value
+            self.set_terrain((x + (i % size), y + (i // size)), terrain, weight)
 
 def load_map(filename):
     try:
@@ -59,14 +70,13 @@ def load_map(filename):
         x = 0
         for char in line:
             if char == 'B':
-                grid.add_block(grid.walls, (x, y), WORLD_SCALE)
+                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Rock, 0)
             elif char == 'G':
-                grid.add_block(grid.swamp, (x, y), WORLD_SCALE)
-                grid.set_block(grid.weights, (x, y), WORLD_SCALE, 2)
+                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Swamp, 2)
             elif char == 'V':
-                grid.add_block(grid.water, (x, y), WORLD_SCALE)
+                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Water, 0)
             elif char == 'T':
-                grid.add_block(grid.trees, (x, y), WORLD_SCALE, WORLD_TREES_PER_CELL)
+                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Tree, 0, WORLD_TREES_PER_CELL)
             x += 1
         y += 1
 
