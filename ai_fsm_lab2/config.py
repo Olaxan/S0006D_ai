@@ -10,7 +10,7 @@ WORLD_PATH = R"C:\Users\efiilj-7-local\Documents\Source\S0006D_ai\ai_fsm_lab2\ma
 WORLD_SCALE = 1 # meters per cell
 WORLD_TREES_PER_CELL = 5
 
-TILE_SIZE = 16
+TILE_SIZE = 32
 
 FPS = 60
 WINDOW_CAPTION = "Blorf 3.0"

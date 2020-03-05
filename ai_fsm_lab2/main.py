@@ -18,7 +18,7 @@ class Game:
         self.clock = pg.time.Clock()
         pg.key.set_repeat(500, 100)
 
-        self.terrain_surf = None
+        self.background = None
         self.world = None
         self.all_sprites = None
         self.walls = None
@@ -31,16 +31,16 @@ class Game:
     def load_data(self):
         game_dir = path.dirname(__file__)
         self.world = World.from_map(path.join(game_dir, 'map/Map1.txt'))
+        self.background = pg.image.load(path.join(game_dir, 'res/bg.jpg'))
 
     def new(self):
         # initialize all variables and do all the setup for a new game
         self.all_sprites = pg.sprite.Group()
         self.walls = pg.sprite.Group()
-        self.terrain_surf = pg.Surface(self.world.width * TILE_SIZE, self.world.height * TILE_SIZE)
-        t = self.world.graph
-        for i, cell in enumerate(self.world.graph.terrain):
-            x = i % t.width
-            y = i // t.width
+        g = self.world.graph
+        for i, cell in enumerate(g.terrain):
+            x = i % g.width
+            y = i // g.width
             if cell[0] is TerrainTypes.Ground:
                 Ground(self, x, y)
             elif cell[0] is TerrainTypes.Rock:
@@ -49,6 +49,8 @@ class Game:
                 Water(self, x, y)
             elif cell[0] is TerrainTypes.Swamp:
                 Swamp(self, x, y)
+            elif cell[0] is TerrainTypes.Tree:
+                Tree(self, x, y)
 
         self.camera = Camera(0, 0, 256, 256)
 
@@ -71,13 +73,11 @@ class Game:
         self.camera.update(self.dt)
 
     def draw(self):
-        self.screen.fill(COL_BG)
+        self.screen.blit(self.background, (0, 0))
         for sprite in self.all_sprites:
-            fog = self.world.graph.get_fog(sprite.x, sprite.y)
-            if fog:
-                pass
-            else:
-                self.screen.blit(sprite.image, self.camera.apply(sprite))
+            fog = self.world.graph.get_fog((sprite.x, sprite.y))
+            if not not not fog:
+                self.screen.blit(sprite.image, self.camera.apply(sprite), special_flags=pg.BLEND_MULT)
         pg.display.flip()
 
     def events(self):

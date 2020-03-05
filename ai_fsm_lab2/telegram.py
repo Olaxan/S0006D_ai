@@ -1,13 +1,9 @@
 from enum import Enum, auto
 
 class MessageTypes(Enum):
-    MSG_MEETING             = auto()    # Meeting invitation, data is shared MeetingState
-    MSG_MEETING_REPLY       = auto()    # Reply to meeting invitation, data is True/False for Accept/Decline
-    MSG_MEETING_CANCEL      = auto()    # Message to cancel planned meeting
-    MSG_MEETING_LEAVING     = auto()    # Message to announce leaving a meeting
-    MSG_WAKEUP              = auto()    # Message to wake up during sleep state
-    MSG_ARRIVAL             = auto()    # Message to announce arriving at a new location, data is location string
-    MSG_PATH_FAIL           = auto()    # Message to announce agent failed to path to location
+    MSG_PATH_DONE       = auto()
+    MSG_PATH_FAIL       = auto()
+    MSG_UNIT_CREATED    = auto()
 
 class Telegram:
 

@@ -3,10 +3,10 @@
 from enum import Enum, auto
 from random import randint
 
-from path import WeightedGrid, Path
 from config import *
+from path import Path, WeightedGrid
 from telegram import Telegram
-from sprites import *
+
 
 class TerrainTypes(Enum):
     Ground  = auto()
@@ -30,21 +30,19 @@ class WorldGrid(WeightedGrid):
 
     def cost(self, cell):
         x, y = cell
-        return self.terrain[x + self.width * y][0]
+        return self.terrain[x + self.width * y][1]
 
     def is_free(self, cell):
         return self.cost(cell) != 0
 
     def set_terrain(self, cell, terrain, weight=1):
         x, y = cell
-        terrain = self.get_terrain(x, y)
-        self.terrain[x + self.width * y] = (terrain, weight, terrain[2])
+        t = self.get_terrain(cell)
+        self.terrain[x + self.width * y] = (terrain, weight, t[2])
 
-    def get_terrain(self, cell, cell_y=None):
-        if cell_y is None:
-            return self.terrain[cell]
-        else:
-            return self.terrain[cell + self.width * cell_y]
+    def get_terrain(self, cell):
+        x, y = cell
+        return self.terrain[x + self.width * y]
 
     def set_fog(self, cell, fog):
         x, y = cell
@@ -118,33 +116,6 @@ class World:
         return cls(grid, locations, heuristic)
 
     @property
-    def time(self):
-        """Returns the time as an hour decimal wrapped to 24 hours"""
-        return ((self._time % 24) + 24) % 24
-
-    @property
-    def time_24(self) -> str:
-        """Returns the time formatted as HH:MM"""
-        return self.time_format_24(self._time)
-
-    @property
-    def hour_24(self) -> int:
-        """Returns the current hour as an integer, in a 24 hour format"""
-        return int(self._time % 24)
-
-    @property
-    def hour_12(self) -> (int, str):
-        """Returns the current hour as an integer, in a 12 hour format, as well as AM or PM"""
-        hour = int(self._time % 12)
-        am = "AM" if self.time < 12 else "PM"
-        return (hour, am)
-
-    @property
-    def minutes(self) -> int:
-        """Returns the current number of minutes past the hour"""
-        return int(60.0 * float(self._time % 1.0))
-
-    @property
     def width(self) -> int:
         return self._graph.width
 
@@ -155,13 +126,6 @@ class World:
     @property
     def graph(self) -> WeightedGrid:
         return self._graph
-
-    @staticmethod
-    def time_format_24(time) -> str:
-        """Formats a given time as HH:MM"""
-        hour = int(time % 24)
-        minute = int(60.0 * float(time % 1.0))
-        return "{:02d}:{:02d}".format(hour, minute)
 
     def _id_is_free(self, agent_id: int) -> bool:
         """Internal - check if ID is free"""

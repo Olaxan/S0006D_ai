@@ -120,22 +120,8 @@ class Agent(StateContext):
     def is_walking(self) -> bool:
         return isinstance(self.state, GotoState)
 
-# A specialized FSM state, containing flavor text, as well as providing an Agent context instead of StateContext
-class AgentState(State):
-
-    state_name = "unknown reasons"
-    state_verb = "doing something"
-
-    @property
-    def context(self) -> Agent:
-        return self._context
-
-    @context.setter
-    def context(self, context: Agent):
-        self._context = context
-
 # Move the agent to another place on the board
-class GotoState(AgentState):
+class GotoState(State):
 
     state_name = "a walk"
     state_verb = "walking"
@@ -239,13 +225,13 @@ class GotoState(AgentState):
     def valid(self):
         return len(self._path) > 0
 
-class PathErrorState(AgentState):
+class PathErrorState(State):
 
     def enter(self, context):
         context.describe("placed in a path error state!")
 
 # A state with a common pool of participants, with the first member counting as host
-class SharedState(AgentState):
+class SharedState(State):
 
     _party = None
 
@@ -272,7 +258,7 @@ class SharedState(AgentState):
         else:
             agent.change_state(state)
 
-class GlobalState(AgentState):
+class GlobalState(State):
 
     rent = 2500
 
@@ -348,7 +334,7 @@ class GlobalState(AgentState):
 
 # Work between start and end hours, giving the agent money in the process
 # Has specialized blip states for managing other needs while at work
-class WorkState(AgentState):
+class WorkState(State):
 
     state_name = "work"
     state_verb = "working"
@@ -470,7 +456,7 @@ class WorkState(AgentState):
         return False
 
 # State for eating while at work
-class WorkEatState(AgentState):
+class WorkEatState(State):
 
     state_name = "a sandwich"
     state_verb = "eating a sandwich"
@@ -493,7 +479,7 @@ class WorkEatState(AgentState):
         context.revert_state()
 
 # State for drinking while at work
-class WorkDrinkState(AgentState):
+class WorkDrinkState(State):
 
     state_name = "a sip of water"
     state_verb = "having a water break"
@@ -516,7 +502,7 @@ class WorkDrinkState(AgentState):
             context.revert_state()
 
 # State for managing sleep by means of coffee while at work
-class WorkSleepState(AgentState):
+class WorkSleepState(State):
 
     state_name = "a cup of coffee"
     state_verb = "having a cuppa"
@@ -542,7 +528,7 @@ class WorkSleepState(AgentState):
         context.revert_state()
 
 # State for going to bed and sleeping until wakeup call
-class SleepState(AgentState):
+class SleepState(State):
 
     state_name = "some sleep"
     state_verb = "sleeping"
@@ -627,7 +613,7 @@ class SleepState(AgentState):
         return False
 
 # State for going to Dallas for a meal
-class EatState(AgentState):
+class EatState(State):
 
     state_name = "a bite"
     state_verb = "eating"
@@ -684,7 +670,7 @@ class EatState(AgentState):
             meeting.join_state(context, do_exit=False)
 
 # State for going to Travven for a drink
-class DrinkState(AgentState):
+class DrinkState(State):
 
     state_name = "a drink"
     state_verb = "having a drink"
@@ -741,7 +727,7 @@ class DrinkState(AgentState):
             return
 
 # Blip state for going to bathroom
-class ToiletState(AgentState):
+class ToiletState(State):
 
     enter_bathroom = [
         "Ooh, better hit the john!",
