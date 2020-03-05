@@ -229,12 +229,3 @@ class World:
         telegram.dispatch_time = self._time + delay
         self._messages.append(telegram)
         return 0
-
-    def dispatch_scheduled(self, time, telegram: Telegram):
-        """Set a message for scheduled dispatch, the current or next day"""
-        if time < self.time:
-            time += (24 - self.time)
-        else:
-            time -= self.time
-
-        self.dispatch(telegram, time)
