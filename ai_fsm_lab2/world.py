@@ -6,20 +6,27 @@ from random import randint
 from path import WeightedGrid, Path
 from config import *
 from telegram import Telegram
+from sprites import *
 
 class TerrainTypes(Enum):
-        Ground  = COL_DARK_CELL
-        Rock    = COL_WALL
-        Water   = COL_WATER
-        Swamp   = COL_SWAMP
-        Tree    = COL_TREE
+    Ground  = auto()
+    Rock    = auto()
+    Water   = auto()
+    Swamp   = auto()
+    Tree    = auto()
+
+class Item(Enum):
+    Tree    = auto()
+    Stump   = auto()
+    Ore     = auto()
 
 class WorldGrid(WeightedGrid):
 
     def __init__(self, width, height):
         self.width = width
         self.height = height
-        self.terrain = [(TerrainTypes.Ground, 1)] * (width * height)
+        self.terrain = [(TerrainTypes.Ground, 1, True)] * (width * height)
+        self.items = []
 
     def cost(self, cell):
         x, y = cell
@@ -30,13 +37,22 @@ class WorldGrid(WeightedGrid):
 
     def set_terrain(self, cell, terrain, weight=1):
         x, y = cell
-        self.terrain[x + self.width * y] = (terrain, weight)
+        terrain = self.get_terrain(x, y)
+        self.terrain[x + self.width * y] = (terrain, weight, terrain[2])
 
     def get_terrain(self, cell, cell_y=None):
         if cell_y is None:
             return self.terrain[cell]
         else:
             return self.terrain[cell + self.width * cell_y]
+
+    def set_fog(self, cell, fog):
+        x, y = cell
+        self.terrain[x + self.width * y][2] = fog
+
+    def get_fog(self, cell):
+        x, y = cell
+        return self.terrain[x + self.width * y][2]
 
     def set_terrain_block(self, cell, size, terrain, weight=1, rand_count=None):
         x, y = cell

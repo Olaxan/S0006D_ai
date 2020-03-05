@@ -1,81 +1,96 @@
-"""Main file for agent behaviour"""
+import sys
+from os import path
 
-from __future__ import annotations
-
-from random import seed, randint
-
-import pygame
+import pygame as pg
 
 from config import *
-from resmgr import ResourceManager
-from unitmgr import UnitManager
+from sprites import *
 from world import World, TerrainTypes
-from utils import Clamped
+from camera import Camera
 
-def in_view(cell, view, zoom):
-    return cell[0] > view[0] and cell[0] < view[0] + zoom and cell[1] > view[1] and cell[1] < view[1] + zoom
 
-def variant(col, lo=-20, hi=20):
-    r, g, b = col
-    k = randint(lo, hi)
-    return (r + k, g + k, b + k)
+class Game:
 
-if __name__ == "__main__":
+    def __init__(self):
+        pg.init()
+        self.screen = pg.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        pg.display.set_caption(WINDOW_CAPTION)
+        self.clock = pg.time.Clock()
+        pg.key.set_repeat(500, 100)
 
-    seed(WORLD_PATH)
+        self.terrain_surf = None
+        self.world = None
+        self.all_sprites = None
+        self.walls = None
+        self.camera = None
+        self.playing = False
+        self.dt = 0
 
-    WORLD = World.from_map(WORLD_PATH)
-    MANAGERS = [
-        UnitManager(WORLD),
-        ResourceManager(WORLD)
-    ]
+        self.load_data()
 
-    for mgr in MANAGERS:
-        mgr.start()
+    def load_data(self):
+        game_dir = path.dirname(__file__)
+        self.world = World.from_map(path.join(game_dir, 'map/Map1.txt'))
 
-    pygame.init()
-    SCREEN = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    pygame.display.set_caption(WINDOW_CAPTION)
+    def new(self):
+        # initialize all variables and do all the setup for a new game
+        self.all_sprites = pg.sprite.Group()
+        self.walls = pg.sprite.Group()
+        self.terrain_surf = pg.Surface(self.world.width * TILE_SIZE, self.world.height * TILE_SIZE)
+        t = self.world.graph
+        for i, cell in enumerate(self.world.graph.terrain):
+            x = i % t.width
+            y = i // t.width
+            if cell[0] is TerrainTypes.Ground:
+                Ground(self, x, y)
+            elif cell[0] is TerrainTypes.Rock:
+                Rock(self, x, y)
+            elif cell[0] is TerrainTypes.Water:
+                Water(self, x, y)
+            elif cell[0] is TerrainTypes.Swamp:
+                Swamp(self, x, y)
 
-    ZOOM = Clamped(1, 1, 10)
+        self.camera = Camera(0, 0, 256, 256)
 
-    VIEW_X = 0
-    VIEW_Y = 0
-    VIEW_ZOOM = 100
+    def run(self):
+        # game loop - set self.playing = False to end the game
+        self.playing = True
+        while self.playing:
+            self.dt = self.clock.tick(FPS) / 1000
+            self.events()
+            self.update()
+            self.draw()
 
-    while True:
+    def quit(self):
+        pg.quit()
+        sys.exit()
 
-        ZOOM_SIZE = max(WINDOW_WIDTH, WINDOW_HEIGHT) / VIEW_ZOOM
+    def update(self):
+        # update portion of the game loop
+        self.all_sprites.update()
+        self.camera.update(self.dt)
 
-        WORLD.step_forward(STEP_SIZE)
-
-        SCREEN.fill(COL_DARK_CELL)
-
-        KEYS = pygame.key.get_pressed()  #checking pressed keys
-        MULT = 1 if KEYS[pygame.K_LSHIFT] else PAN_SHIFT_MULT
-        VIEW_X += ((KEYS[pygame.K_d]) - (KEYS[pygame.K_a])) * PAN_SIZE * MULT
-        VIEW_Y += ((KEYS[pygame.K_s]) - (KEYS[pygame.K_w])) * PAN_SIZE * MULT
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                break
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                VIEW_ZOOM += ((event.button == 5) - (event.button == 4)) * ZOOM_STEP
-
-        for i in range(VIEW_ZOOM ** 2):
-            local_x = i % VIEW_ZOOM
-            local_y = i // VIEW_ZOOM
-            x = VIEW_X + local_x
-            y = VIEW_Y + local_y
-            rect = pygame.Rect(local_x * ZOOM_SIZE - 1, local_y * ZOOM_SIZE - 1, ZOOM_SIZE + 2, ZOOM_SIZE + 2)
-            if WORLD.graph.is_in_bounds((x, y)):
-                terrain = WORLD.graph.get_terrain(x, y)[0].value
-                if terrain is not TerrainTypes.Ground:
-                    pygame.draw.rect(SCREEN, terrain, rect)
+    def draw(self):
+        self.screen.fill(COL_BG)
+        for sprite in self.all_sprites:
+            fog = self.world.graph.get_fog(sprite.x, sprite.y)
+            if fog:
+                pass
             else:
-                pygame.draw.rect(SCREEN, 0, rect)
+                self.screen.blit(sprite.image, self.camera.apply(sprite))
+        pg.display.flip()
 
+    def events(self):
+        # catch all events here
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                self.quit()
+            if event.type == pg.KEYDOWN:
+                if event.key == pg.K_ESCAPE:
+                    self.quit()
 
-        pygame.display.flip()
-
-# ============== FUNCTIONS ==============
+# create the game object
+g = Game()
+while True:
+    g.new()
+    g.run()
