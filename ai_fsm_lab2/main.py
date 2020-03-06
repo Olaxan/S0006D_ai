@@ -1,12 +1,14 @@
 import sys
 from os import path
+from random import choice
 
 import pygame as pg
 
+from camera import Camera
 from config import *
 from sprites import *
-from world import World, TerrainTypes
-from camera import Camera
+from unit import ManagerState, Unit, WorkerState
+from world import TerrainTypes, World
 
 
 class Game:
@@ -18,10 +20,14 @@ class Game:
         self.clock = pg.time.Clock()
         pg.key.set_repeat(500, 100)
 
-        self.background = None
         self.world = None
+        self.spawn_cell = None
+
+        self.background = None
         self.all_sprites = None
-        self.walls = None
+        self.fog = None
+        self.non_fog = None
+
         self.camera = None
         self.playing = False
         self.dt = 0
@@ -29,14 +35,31 @@ class Game:
         self.load_data()
 
     def load_data(self):
-        game_dir = path.dirname(__file__)
-        self.world = World.from_map(path.join(game_dir, 'map/Map1.txt'))
-        self.background = pg.image.load(path.join(game_dir, 'res/bg.jpg'))
+        self.world = World.from_map(WORLD_PATH)
+        self.background = pg.image.load(BACKGROUND_PATH)
+
+    def spawn(self):
+        spawn_cell = self.world.get_random_cell()
+        spawn_region = self.world.graph.neighbours(spawn_cell, False)
+        spawn_region.append(spawn_cell)
+
+        for u in range(INIT_UNITS - 1):
+            rand_cell = choice(spawn_region)
+            unit = Unit(self.world, rand_cell, WorkerState)
+            UnitSprite(self, unit)
+            unit.start()
+
+        manager = Unit(self.world, spawn_cell, ManagerState)
+        manager.start()
+        UnitSprite(self, manager)
+
+        return spawn_cell
 
     def new(self):
         # initialize all variables and do all the setup for a new game
         self.all_sprites = pg.sprite.Group()
-        self.walls = pg.sprite.Group()
+        self.fog = pg.sprite.Group()
+        self.non_fog = pg.sprite.Group()
         g = self.world.graph
         for i, cell in enumerate(g.terrain):
             x = i % g.width
@@ -52,7 +75,11 @@ class Game:
             elif cell[0] is TerrainTypes.Tree:
                 Tree(self, x, y)
 
-        self.camera = Camera(0, 0, 256, 256)
+        self.spawn_cell = self.spawn()
+        x_offset = WINDOW_WIDTH / 2 - self.spawn_cell[0] * TILE_SIZE
+        y_offset = WINDOW_HEIGHT / 2 - self.spawn_cell[1] * TILE_SIZE
+        self.world.reveal(self.spawn_cell)
+        self.camera = Camera(x_offset, y_offset, self.world.width * TILE_SIZE, self.world.height * TILE_SIZE)
 
     def run(self):
         # game loop - set self.playing = False to end the game
@@ -69,15 +96,20 @@ class Game:
 
     def update(self):
         # update portion of the game loop
+        self.world.step_forward(self.dt * TIME_SCALE)
         self.all_sprites.update()
         self.camera.update(self.dt)
 
     def draw(self):
         self.screen.blit(self.background, (0, 0))
-        for sprite in self.all_sprites:
+
+        for sprite in self.fog:
             fog = self.world.graph.get_fog((sprite.x, sprite.y))
-            if not not not fog:
-                self.screen.blit(sprite.image, self.camera.apply(sprite), special_flags=pg.BLEND_MULT)
+            if not fog:
+                self.screen.blit(sprite.image, self.camera.apply(sprite))
+        for unit in self.non_fog:
+            self.screen.blit(unit.image, self.camera.apply(unit))
+
         pg.display.flip()
 
     def events(self):

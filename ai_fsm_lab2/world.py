@@ -1,5 +1,6 @@
 """ Represent a 2D world with agents and locations """
 
+from copy import deepcopy
 from enum import Enum, auto
 from random import randint
 
@@ -14,50 +15,49 @@ class TerrainTypes(Enum):
     Water   = auto()
     Swamp   = auto()
     Tree    = auto()
-
-class Item(Enum):
-    Tree    = auto()
     Stump   = auto()
-    Ore     = auto()
 
 class WorldGrid(WeightedGrid):
 
     def __init__(self, width, height):
         self.width = width
         self.height = height
-        self.terrain = [(TerrainTypes.Ground, 1, True)] * (width * height)
-        self.items = []
+        self.terrain = [deepcopy([TerrainTypes.Ground, 1, HAS_FOG]) for x in range(width * height)]
 
     def cost(self, cell):
-        x, y = cell
-        return self.terrain[x + self.width * y][1]
+        t = self.get_terrain(cell)
+        return t[1]
 
     def is_free(self, cell):
         return self.cost(cell) != 0
 
     def set_terrain(self, cell, terrain, weight=1):
-        x, y = cell
         t = self.get_terrain(cell)
-        self.terrain[x + self.width * y] = (terrain, weight, t[2])
+        t[0] = terrain
+        t[1] = weight
 
     def get_terrain(self, cell):
         x, y = cell
+        if (x + y * self.width > len(self.terrain)):
+            return None
+
         return self.terrain[x + self.width * y]
 
     def set_fog(self, cell, fog):
-        x, y = cell
-        self.terrain[x + self.width * y][2] = fog
+        t = self.get_terrain(cell)
+        t[2] = fog
 
     def get_fog(self, cell):
-        x, y = cell
-        return self.terrain[x + self.width * y][2]
+        t = self.get_terrain(cell)
+        return t[2] if t is not None else True
 
     def set_terrain_block(self, cell, size, terrain, weight=1, rand_count=None):
         x, y = cell
-        r = range(size ** 2)
 
-        if rand_count is not None:
+        if rand_count is not None and size != 1:
             r = [randint(0, size ** 2) for i in range(rand_count)]
+        else:
+            r = range(size ** 2)
 
         for i in r:
             self.set_terrain((x + (i % size), y + (i // size)), terrain, weight)
@@ -83,14 +83,15 @@ def load_map(filename):
     for line in lines:
         x = 0
         for char in line:
+            cell = (x * WORLD_SCALE, y * WORLD_SCALE)
             if char == 'B':
-                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Rock, 0)
+                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Rock, 20)
             elif char == 'G':
-                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Swamp, 2)
+                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Swamp, 2)
             elif char == 'V':
-                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Water, 0)
+                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Water, 0)
             elif char == 'T':
-                grid.set_terrain_block((x * WORLD_SCALE, y * WORLD_SCALE), WORLD_SCALE, TerrainTypes.Tree, 0, WORLD_TREES_PER_CELL)
+                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Tree, 10, WORLD_TREES_PER_CELL)
             x += 1
         y += 1
 
@@ -124,8 +125,12 @@ class World:
         return self._graph.height
 
     @property
-    def graph(self) -> WeightedGrid:
+    def graph(self) -> WorldGrid:
         return self._graph
+
+    @property
+    def all_agents(self):
+        return self.agents.values()
 
     def _id_is_free(self, agent_id: int) -> bool:
         """Internal - check if ID is free"""
@@ -179,9 +184,12 @@ class World:
     def get_path(self, path_from, path_to):
         return Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
 
-    def place_random(self, *args):
-        for place in args:
-            self.locations[place] = self.get_random_cell()
+    def reveal(self, cell):
+        self.graph.set_fog(cell, False)
+        neighbours = self.graph.neighbours(cell, False)
+        for n in neighbours:
+            self.graph.set_fog(n, False)
+        return neighbours
 
     def is_at(self, agent, location: str) -> bool:
         """Returns whether the specified agent is present at a location string"""

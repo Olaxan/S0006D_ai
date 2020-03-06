@@ -42,7 +42,7 @@ class StateContext(ABC):
         if self._current_state is not None:
             self._current_state.enter(self)
 
-    def update(self, step = 1):
+    def update(self, step=1):
         """Moves the FSM ahead a step of specified size.
         Step size is passed to update functions."""
         if self._global_state is not None and not self._current_state.ignore_global:

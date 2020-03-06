@@ -74,7 +74,7 @@ class Grid:
         dy = to_cell[1] - from_cell[1]
         return self.is_free((from_cell[0] + dx, from_cell[1])) and self.is_free((from_cell[0], from_cell[1] + dy))
 
-    def neighbours(self, cell):
+    def neighbours(self, cell, is_free=True):
         x, y = cell
         results = [
             (x + 1, y),     # right
@@ -86,9 +86,10 @@ class Grid:
             (x, y + 1),     # bottom
             (x + 1, y + 1)  # bottom right
         ]
-        results = filter(self.is_in_bounds, results)
-        results = filter(self.is_free, results)
-        results = filter(lambda test: self.is_adjacent_free(test, cell), results)
+        if is_free:
+            results = filter(self.is_in_bounds, results)
+            results = filter(self.is_free, results)
+            results = filter(lambda test: self.is_adjacent_free(test, cell), results)
         return results
 
 class WeightedGrid(Grid):

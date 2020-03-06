@@ -1,16 +1,19 @@
 """ Contains program configuration """
 
-PATH_MODE = 2
-FRAME_DELAY = 500
-STEP_SIZE = 0.25
-EVAL_MODE = False
-EVAL_STEPS = 1000
+from os import path
 
-WORLD_PATH = R"C:\Users\efiilj-7-local\Documents\Source\S0006D_ai\ai_fsm_lab2\map\Map1.txt"
+GAME_PATH = path.dirname(__file__)
+WORLD_PATH = path.join(GAME_PATH, 'map/Map1.txt')
+WORLD_BG_PATH = path.join(GAME_PATH, 'map/Map1.bmp')
+BACKGROUND_PATH = path.join(GAME_PATH, 'res/bg.jpg')
+
+TIME_SCALE = 5
 WORLD_SCALE = 1 # meters per cell
 WORLD_TREES_PER_CELL = 5
+WORLD_ORE_COUNT = 50
+HAS_FOG = True
 
-TILE_SIZE = 32
+TILE_SIZE = 16
 
 FPS = 60
 WINDOW_CAPTION = "Blorf 3.0"
@@ -25,10 +28,18 @@ COL_ROCK = (90, 77, 65)
 COL_WATER = (156, 211, 219)
 COL_SWAMP = (80, 102, 53)
 COL_TREE = (200, 180, 50)
-COL_PLACE = (255, 200, 200)
+COL_ORE = (70, 50, 50)
+COL_UNIT = (255, 255, 0)
+COL_WORKER = (255, 125, 0)
+COL_SCOUT = (255, 0, 255)
 
 INIT_UNITS = 50
-INIT_EXPLORER = 5
+INIT_SCOUT = 5
 INIT_WORKER_COAL = 1
 INIT_WORKER_BUILDER = 1
 INIT_WORKER_SMELTERY = 1
+
+UNIT_SPEED = 1
+UNIT_SPEED_SCOUT = 2
+
+TRAIN_TIME_SCOUT = 5

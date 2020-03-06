@@ -8,17 +8,17 @@ def variant(col, low, high):
     return (r + rand, g + rand, b + rand)
 
 class Tile(pg.sprite.Sprite):
-    def __init__(self, game, x, y):
-        self.groups = game.all_sprites, game.walls
+    def __init__(self, game, x, y, expand=0):
+        self.groups = game.all_sprites, game.fog
         pg.sprite.Sprite.__init__(self, self.groups)
         self.game = game
-        self.image = pg.Surface((TILE_SIZE, TILE_SIZE))
+        self.image = pg.Surface((TILE_SIZE + expand * 2, TILE_SIZE + expand * 2))
         self.image.fill(COL_BG)
         self.rect = self.image.get_rect()
         self.x = x
         self.y = y
-        self.rect.x = x * TILE_SIZE
-        self.rect.y = y * TILE_SIZE
+        self.rect.x = x * TILE_SIZE - expand
+        self.rect.y = y * TILE_SIZE - expand
 
 class Ground(Tile):
     def __init__(self, game, x, y):
@@ -48,5 +48,30 @@ class Swamp(Tile):
 
 class Tree(Tile):
     def __init__(self, game, x, y):
-        super().__init__(game, x, y)
-        self.image.fill(variant(COL_TREE, -20, 20))
+        super().__init__(game, x, y, -4)
+        self.image.fill(COL_TREE)
+
+class UnitSprite(pg.sprite.Sprite):
+
+    def __init__(self, game, agent):
+        self.groups = game.all_sprites, game.non_fog
+        pg.sprite.Sprite.__init__(self, self.groups)
+        self.game = game
+        self.image = pg.Surface((TILE_SIZE - 8, TILE_SIZE - 8))
+        self.image.fill(COL_UNIT)
+        self.rect = self.image.get_rect()
+        self.agent = agent
+
+    def update(self):
+        self.rect.x = self.agent.x * TILE_SIZE + 4
+        self.rect.y = self.agent.y * TILE_SIZE + 4
+
+class WorkerSprite(UnitSprite):
+    def __init__(self, game, agent):
+        super().__init__(game, agent)
+        self.image.fill(COL_WORKER)
+
+class ScoutSprite(UnitSprite):
+    def __init__(self, game, agent):
+        super().__init__(game, agent)
+        self.image.fill(COL_SCOUT)

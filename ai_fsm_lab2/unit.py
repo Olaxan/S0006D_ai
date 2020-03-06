@@ -1,9 +1,11 @@
 from __future__ import annotations
+from random import randint
 
 from enum import Enum, auto
 from state import State, StateContext
 from telegram import MessageTypes, Telegram
 from world import World
+from config import *
 
 class UnitTypes(Enum):
     Worker  = auto()
@@ -11,21 +13,17 @@ class UnitTypes(Enum):
 
 class Unit(StateContext):
 
-    def __init__(self, world: World, unit_type, speed):
-        super().__init__(WorkerState(), UnitGlobal())
+    def __init__(self, world: World, location, state):
+        super().__init__(state(), UnitGlobal())
         self._world = world
-        self._location = [0, 0]
-        self.speed = speed
-        self.unit_type = unit_type
+        self._location = list(location)
+        self.speed = UNIT_SPEED
 
         self._id = self._world.register_agent(self)
 
     # Gets called by world manager, just before receiving an agent_id
     # For delayed initalization of variables that need reference to World
     def init(self):
-        pass
-
-    def on_move(self):
         pass
 
     @property   # Returns agent agent_id, immutable
@@ -43,7 +41,6 @@ class Unit(StateContext):
     @x.setter
     def x(self, value):
         self._location[0] = value
-        self.on_move()
 
     @property
     def y(self):
@@ -52,7 +49,6 @@ class Unit(StateContext):
     @y.setter
     def y(self, value):
         self._location[1] = value
-        self.on_move()
 
     @property   # Returns agent's [X, Y] position in World
     def location(self):
@@ -122,12 +118,14 @@ class GotoState(State):
         path_len = len(self._path)
 
         if path_len > 0:
-            self._progress += context.speed * step
-            if self._progress >= path_len:
-                context.location = self._path[-1]
-                self._finish(context)
-            else:
-                context.location = self._path[int(self._progress)]
+            for i in range(context.speed):
+                cost = context.world.graph.cost(context.location)
+                self._progress += context.speed / cost
+                if self._progress < path_len:
+                    context.location = self._path[int(self._progress)]
+                else:
+                    context.location = self._path[-1]
+                    self._finish(context)
         else:
             self._abort(context)
 
@@ -136,25 +134,67 @@ class PathErrorState(State):
     def enter(self, context):
         print("Agent is placed in a path error state!")
 
+class ManagerState(State):
+
+    def enter(self, context):
+        scouts = self.get_workers(context.world, INIT_SCOUT)
+        for scout in scouts:
+            scout_state = ScoutState()
+            scout.change_state(TrainingState(None, TRAIN_TIME_SCOUT, scout_state))
+
+    def get_workers(self, world, count):
+        agents = list(filter(lambda L: isinstance(L.state, WorkerState), world.all_agents))
+        return agents[:min(count, len(agents))]
+
+class TrainingState(State):
+
+    def __init__(self, location, time, after_train):
+        self.location = location
+        self.after_train = after_train
+        self.time = time
+
+    def enter(self, context):
+        if self.location is not None: #TODO: Not working
+            target = context.world.get_location()
+            goto = GotoState(target, self)
+            context.change_state(goto, False)
+
+    def execute(self, context, step):
+        self.time -= step
+        if self.time <= 0:
+            context.change_state(self.after_train)
+
 class WorkerState(State):
     pass
 
-class Scout(Unit):
+class ScoutState(GotoState):
 
-    def on_move(self):
-        pass
-
-class ScoutState(State):
+    def __init__(self):
+        super().__init__(None)
+        self.waiting = False
 
     def enter(self, context):
-        target = context.world.get_random_cell()
-        context.world.get_path(context.location, target)
+        self.waiting = True
+
+    def get_random_path(self, context):
+        self._progress = 0
+        while True:
+            self._target = context.world.get_random_cell()
+            success, self._path = context.world.get_path(context.location, self._target)
+            if success:
+                break
+
+    def _finish(self, context):
+        self.waiting = True
+
+    def _abort(self, context):
+        self.waiting = True
 
     def execute(self, context, step):
-        """Gets called once every FSM update, with the specified step size"""
-
-    def exit(self, context):
-        """Gets called once when exiting the state"""
-
-    def on_message(self, context, telegram) -> bool:
-        """Gets called by the FSM when a message has been received"""
+        if self.waiting:
+            if randint(0, 60) == 1:
+                self.waiting = False
+                self.get_random_path(context)
+        else:
+            super().execute(context, step)
+            cells = context.world.reveal(context.location)
