@@ -220,6 +220,13 @@ class TrainingState(State):
 
 class BuilderState(State):
 
+    def __init__(self):
+        self.is_building = False
+
+    def enter(self, context):
+        if self.is_building:
+            pass
+
     def on_message(self, context, telegram):
 
         if telegram.message is MessageTypes.MSG_BUILDING_NEEDED:
@@ -227,6 +234,11 @@ class BuilderState(State):
             camp_location = context.world.get_locations(BuildingTypes.Camp)
             build_origin = camp_location[0] if camp_location is not None else context.location
             build_site = context.world.get_random_cell(build_origin, 2)
+            context.world.reveal(build_site)
+            goto = GotoState(build_site, self)
+            context.change_state(goto)
+            self.is_building = True
+            return
 
 class WorkerState(State):
 
