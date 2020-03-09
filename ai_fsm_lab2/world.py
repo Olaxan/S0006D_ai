@@ -231,15 +231,16 @@ class World:
 
         return locations if len(locations) > 0 else None
 
-    def add_resource_to_cell(self, resource, location, count=1):
+    def add_resource(self, resource, location, count=1):
         key = (location, resource)
 
         if key not in self.resources:
             self.resources[key] = 0
 
         self.resources[key] += count
+        return self.resources[key]
 
-    def get_resources_from_cell(self, location, resource):
+    def get_resource(self, location, resource):
         key = (location, resource)
         return self.resources.get(key, 0)
 

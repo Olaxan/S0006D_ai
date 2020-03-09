@@ -225,7 +225,10 @@ class BuilderState(State):
 
     def enter(self, context):
         if self.is_building:
-            pass
+            res = context.world.get_resource(context.location, ResourceTypes.Log)
+            if res < BUILD_KILN_LOGS:
+                resource_msg = Telegram(context.agent_id, None, MessageTypes.MSG_RESOURCE_NEEDED, (ResourceTypes.Log, context.location))
+                context.world.dispatch(resource_msg)
 
     def on_message(self, context, telegram):
 
@@ -243,13 +246,17 @@ class BuilderState(State):
 class WorkerState(State):
 
     def on_message(self, context, telegram):
-        if telegram.message is MessageTypes.MSG_RESOURCE:
+        if telegram.message is MessageTypes.MSG_RESOURCE_FOUND:
             res, cell = telegram.data
             if res is TerrainTypes.Tree:
                 print("Coming to chop it down!")
                 state = WorkerLoggerState(cell)
                 context.change_state(state)
                 return True
+
+        if telegram.message is MessageTypes.MSG_RESOURCE_NEEDED:
+            res, cell = telegram.data
+
 
 class WorkerLoggerState(WorkerState):
 
@@ -262,54 +269,54 @@ class WorkerLoggerState(WorkerState):
             context.change_state(GotoState(self._target, self))
             return
 
-        print("Starting to chop a tree")
+        print("Time to get a-choppin'!")
 
     def execute(self, context, step):
         self._timer -= step
         if self._timer <= 0:
-            context.world.graph.set_terrain(self._target, TerrainTypes.Stump)
-            state = WorkerTransportState(ResourceTypes.Log, BuildingTypes.Kiln)
             print("Finished chopping!")
-            context.change_state(state)
+            context.world.graph.set_terrain(self._target, TerrainTypes.Stump)
+            context.world.add_resource(context.location, ResourceTypes.Log)
+            camp = context.world.get_locations(BuildingTypes.Camp)
+            if camp is not None:
+                print("Guess I'll carry this to the camp.")
+                state = WorkerTransportState(context.location, camp[0])
+                context.change_state(state)
+            else:
+                print("I'll just leave this here, I suppose")
+                context.change_state(WorkerState())
 
     def on_message(self, context, telegram):
         return False
 
 class WorkerTransportState(WorkerState):
 
-    def __init__(self, item, to):
-        self._resource = item
-        self._building = to
-        self._target = None
+    def __init__(self, from_tile, to_tile, resource=None, count=1):
+        self._resource = resource
+        self._from_tile = from_tile
+        self._to_tile = to_tile
+        self._count = count
+        self._is_carrying = False
 
     def enter(self, context):
-        print("Transporting an item!")
-        if self._target is None:
-            targets = context.world.get_locations(self._building)
-            camp = self._target = context.world.get_locations(BuildingTypes.Camp)
-            if targets is None:
-                print("Yo, boss! Need a place for this item!")
-                manager = context.world.get_agents_in_state(ManagerState, 1)
-                build_msg = Telegram(context.agent_id, manager.agent_id, MessageTypes.MSG_BUILDING_NEEDED, self._building)
-                context.world.dispatch(build_msg)
-
-                if camp is None:
-                    print("Can't find anywhere to put this!")
-                    context.change_state(WorkerState())
-                    return
-                else:
-                    self._target = camp[0]
+        if self._is_carrying and context.location == self._to_tile:
+            count = context.world.add_resource(context.location, self._resource)
+            if count < self._count:
+                goto = GotoState(self._from_tile, self)
+                context.change_state(goto)
+                return
             else:
-                self._target = targets[0] #TODO: Pick nearest?
+                context.change_state(WorkerState())
+                return
 
-        if self._target == context.location:
-            print("Putting {} down at {}".format(self._resource, context.location))
-            context.world.add_resource_to_cell(self._resource, self._target)
-            context.change_state(WorkerState())
-            return
-
-        goto = GotoState(self._target, self)
-        context.change_state(goto)
+        if context.location == self._from_tile:
+            if context.world.get_resource(context.location, self._resource) > 0:
+                self._is_carrying = True
+                goto = GotoState(self._to_tile, self)
+                context.change_state(goto)
+            else:
+                print("Nothing more to carry! Well, nothing doing...")
+                context.change_state(WorkerState())
 
     def on_message(self, context, telegram):
         return False
@@ -350,7 +357,7 @@ class ScoutState(GotoState):
                     print("Found a tree!")
                     unit = context.world.get_agents_in_state(WorkerState, 1)
                     if unit is not None:
-                        found_tree_msg = Telegram(context.agent_id, unit.agent_id, MessageTypes.MSG_RESOURCE, (TerrainTypes.Tree, cell))
+                        found_tree_msg = Telegram(context.agent_id, unit.agent_id, MessageTypes.MSG_RESOURCE_FOUND, (TerrainTypes.Tree, cell))
                         context.world.dispatch(found_tree_msg)
 
 
