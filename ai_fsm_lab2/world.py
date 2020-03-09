@@ -17,6 +17,14 @@ class TerrainTypes(Enum):
     Tree    = auto()
     Stump   = auto()
 
+class BuildingTypes(Enum):
+    Camp    = auto()
+    Kiln    = auto()
+
+class ResourceTypes(Enum):
+    Log     = auto()
+    Coal    = auto()
+
 class WorldGrid(WeightedGrid):
 
     def __init__(self, width, height):
@@ -26,26 +34,32 @@ class WorldGrid(WeightedGrid):
 
     def cost(self, cell):
         t = self.get_terrain(cell)
-        return t[1]
+        return t[1] if t is not None else 0
 
     def is_free(self, cell):
         return self.cost(cell) != 0
 
-    def set_terrain(self, cell, terrain, weight=1):
+    def set_terrain(self, cell, terrain, weight=None):
         t = self.get_terrain(cell)
+
+        if t is None:
+            return
+
         t[0] = terrain
-        t[1] = weight
+        if weight is not None:
+            t[1] = weight
 
     def get_terrain(self, cell):
         x, y = cell
-        if (x + y * self.width > len(self.terrain)):
-            return None
+        if self.is_in_bounds(cell):
+            return self.terrain[x + self.width * y]
 
-        return self.terrain[x + self.width * y]
+        return None
 
     def set_fog(self, cell, fog):
         t = self.get_terrain(cell)
-        t[2] = fog
+        if t is not None:
+            t[2] = fog
 
     def get_fog(self, cell):
         t = self.get_terrain(cell)
@@ -85,13 +99,13 @@ def load_map(filename):
         for char in line:
             cell = (x * WORLD_SCALE, y * WORLD_SCALE)
             if char == 'B':
-                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Rock, 20)
+                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Rock, 0)
             elif char == 'G':
                 grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Swamp, 2)
             elif char == 'V':
                 grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Water, 0)
             elif char == 'T':
-                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Tree, 10, WORLD_TREES_PER_CELL)
+                grid.set_terrain_block(cell, WORLD_SCALE, TerrainTypes.Tree, 2, WORLD_TREES_PER_CELL)
             x += 1
         y += 1
 
@@ -103,18 +117,18 @@ class World:
 
     _next_id = 0        # Static ID counter
 
-    def __init__(self, grid, locations=None, heuristic=None):
+    def __init__(self, grid):
         self._messages = []
         self._time = 0
         self._graph = grid
         self.agents = {}
-        self.heuristic = heuristic
-        self.locations = locations if locations is not None else {}
+        self.buildings = {}
+        self.resources = {}
 
     @classmethod
-    def from_map(cls, filename, locations=None, heuristic=None):
+    def from_map(cls, filename):
         grid = load_map(filename)
-        return cls(grid, locations, heuristic)
+        return cls(grid)
 
     @property
     def width(self) -> int:
@@ -135,10 +149,6 @@ class World:
     def _id_is_free(self, agent_id: int) -> bool:
         """Internal - check if ID is free"""
         return agent_id not in self.agents
-
-    def _cell_is_free(self, cell) -> bool:
-        """Internal - check if location cell is free"""
-        return cell not in self.locations.values() and self.graph.is_free(cell)
 
     def _dispatch_delayed(self):
         """Internal - dispatch all due messages in queue"""
@@ -171,37 +181,67 @@ class World:
                 agents.append(agent)
         return agents
 
-    def get_location(self, name: str) -> (int, int):
-        """Returns a location coordinate when provided with location string"""
-        return self.locations.get(name, (0, 0))
+    def get_agents_in_state(self, state, count=None):
+        agents = list(filter(lambda L: isinstance(L.state, state), self.all_agents))
 
-    def get_random_cell(self):
+        if len(agents) == 0:
+            return None
+        if count == 1:
+            return agents[0]
+
+        return agents[:min(count, len(agents))]
+
+    def get_random_cell(self, origin=None, radius=10):
         while True:
-            cell = (randint(0, self.width - 1), randint(0, self.height - 1))
-            if self._cell_is_free(cell):
+            if origin is None:
+                cell = (randint(0, self.width - 1), randint(0, self.height - 1))
+            else:
+                o_x, o_y = origin
+                cell = (o_x + randint(-radius, radius), o_y + randint(-radius, radius))
+
+            if self.graph.is_in_bounds(cell) and self.graph.is_free(cell):
                 return cell
 
-    def get_path(self, path_from, path_to):
-        return Path.a_star_search(self.graph, path_from, path_to, self.heuristic)[:2]
+    def get_path(self, path_from, path_to, path_through_fog=False):
+        if path_through_fog:
+            return Path.a_star_search(self.graph, path_from, path_to, WORLD_SCALE)[:2]
+        else:
+            test = lambda cell: not self.graph.get_fog(cell)
+            return Path.a_star_search(self.graph, path_from, path_to, WORLD_SCALE, filter_func=test)[:2]
 
     def reveal(self, cell):
+        discovered = []
         self.graph.set_fog(cell, False)
         neighbours = self.graph.neighbours(cell, False)
         for n in neighbours:
-            self.graph.set_fog(n, False)
-        return neighbours
+            if self.graph.get_fog(n):
+                self.graph.set_fog(n, False)
+                discovered.append(n)
 
-    def is_at(self, agent, location: str) -> bool:
-        """Returns whether the specified agent is present at a location string"""
+        return discovered
 
-        if isinstance(agent, int):
-            agent = self.get_agent(agent)
+    def add_location(self, location_type, location):
+        self.buildings[location] = location_type
 
-        if agent is None:
-            return False
+    def get_locations(self, location_type):
+        locations = []
+        for key in self.buildings:
+            if self.buildings[key] is location_type:
+                locations.append(key)
 
-        x, y = agent.location
-        return (x, y) == self.locations[location]
+        return locations if len(locations) > 0 else None
+
+    def add_resource_to_cell(self, resource, location, count=1):
+        key = (location, resource)
+
+        if key not in self.resources:
+            self.resources[key] = 0
+
+        self.resources[key] += count
+
+    def get_resources_from_cell(self, location, resource):
+        key = (location, resource)
+        return self.resources.get(key, 0)
 
     def step_forward(self, step=1):
         """Move the world forward a step of the specified size, update all agents"""

@@ -4,6 +4,9 @@ class MessageTypes(Enum):
     MSG_PATH_DONE       = auto()
     MSG_PATH_FAIL       = auto()
     MSG_UNIT_CREATED    = auto()
+    MSG_RESOURCE        = auto()
+    MSG_BUILDING_NEEDED = auto()
+    MSG_BUILDING_DONE   = auto()
 
 class Telegram:
 

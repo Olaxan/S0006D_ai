@@ -48,8 +48,14 @@ class Swamp(Tile):
 
 class Tree(Tile):
     def __init__(self, game, x, y):
-        super().__init__(game, x, y, -4)
-        self.image.fill(COL_TREE)
+        super().__init__(game, x, y)
+        self.image.fill(COL_GROUND)
+        pg.draw.circle(self.image, COL_TREE, (TILE_SIZE // 2, TILE_SIZE // 2), TILE_SIZE // 3)
+
+class Stump(Tile):
+    def __init__(self, game, x, y):
+        super().__init__(game, x, y)
+        self.image.fill(variant(COL_TREE, -20, -10))
 
 class UnitSprite(pg.sprite.Sprite):
 

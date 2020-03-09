@@ -74,7 +74,7 @@ class Grid:
         dy = to_cell[1] - from_cell[1]
         return self.is_free((from_cell[0] + dx, from_cell[1])) and self.is_free((from_cell[0], from_cell[1] + dy))
 
-    def neighbours(self, cell, is_free=True):
+    def neighbours(self, cell, is_free=True, filter_func=None):
         x, y = cell
         results = [
             (x + 1, y),     # right
@@ -90,6 +90,8 @@ class Grid:
             results = filter(self.is_in_bounds, results)
             results = filter(self.is_free, results)
             results = filter(lambda test: self.is_adjacent_free(test, cell), results)
+        if filter_func is not None:
+            results = filter(filter_func, results)
         return results
 
 class WeightedGrid(Grid):
@@ -158,7 +160,7 @@ class Path:
         return (dx + dy) + (1.4 - 2) * min(dx, dy)
 
     @staticmethod
-    def a_star_search(graph, start, goal, heuristic=None):
+    def a_star_search(graph, start, goal, cost_mult=1, filter_func=None, heuristic=None):
 
         cost_map = {start: 0}
         came_from = {start: None}
@@ -178,11 +180,11 @@ class Path:
             if node == goal:
                 return True, Path.reconstruct(came_from, start, goal), cost_map[node]
 
-            for next_node in graph.neighbours(node):
+            for next_node in graph.neighbours(node, True, filter_func):
                 next_cost = cost_map[node] + graph.cost(next_node)
                 if next_node not in cost_map or next_cost < cost_map[next_node]:
                     cost_map[next_node] = next_cost
-                    priority = next_cost + heuristic(next_node, goal)
+                    priority = next_cost + cost_mult * heuristic(next_node, goal)
                     edges.put(next_node, priority)
                     came_from[next_node] = node
 
