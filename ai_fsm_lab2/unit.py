@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 from enum import Enum, auto
+from math import ceil
 from random import randint
 
 from config import *
 from state import State, StateContext
 from telegram import MessageTypes, Telegram
 from world import BuildingTypes, ResourceTypes, TerrainTypes, World
-
-
-class UnitTypes(Enum):
-    Worker  = auto()
-    Scout   = auto()
 
 class PathStates(Enum):
     Idle        = auto()
@@ -20,6 +16,12 @@ class PathStates(Enum):
     Error       = auto()
     Finished    = auto()
 
+class Actions(Enum):
+    Idle        = auto()
+    Waiting     = auto()
+    Working     = auto()
+    Walking     = auto()
+
 class Unit(StateContext):
 
     def __init__(self, world: World, location, state):
@@ -27,6 +29,7 @@ class Unit(StateContext):
         self._world = world
         self._location = list(location)
         self.speed = UNIT_SPEED
+        self.color = COL_UNIT
 
         self._id = self._world.register_agent(self)
 
@@ -140,9 +143,9 @@ class GotoState(State):
     def execute(self, context, step):
 
         if self.state == PathStates.Working:
-            for i in range(context.speed):
+            for i in range(ceil(context.speed * step)):
                 cost = context.world.graph.cost(context.location)
-                self.progress += step / cost
+                self.progress += 1 / cost
                 if self.progress < self.length:
                     context.location = self.path[int(self.progress)]
                 else:
@@ -164,24 +167,25 @@ class ManagerState(State):
 
     def enter(self, context):
         # make camp where manager stands
-        context.world.add_location(BuildingTypes.Camp, context.location)
+        context.world.add_location(context.location, BuildingTypes.Camp)
 
         # create initial scouts
-        worker_pool = context.world.get_agents_in_state(WorkerState, INIT_SCOUT)
+        worker_pool = context.world.get_agents_in_state(WorkerState)
 
-        for i in range(min(INIT_SCOUT, len(worker_pool) - 1)):
+        for i in range(INIT_SCOUT):
             scout_state = ScoutBehindState() if i == 0 else ScoutState()
             worker_pool[i].change_state(TrainingState(None, TIME_TRAIN_SCOUT, scout_state))
 
-        builder_state = BuilderState()
-        worker_pool[i + 1].change_state(TrainingState(None, TIME_TRAIN_BUILDER, builder_state))
+        for j in range(INIT_LOGGER):
+            worker_pool[i + j + 1].change_state(WorkerLoggerState())
 
-        kiln_msg = Telegram(context.agent_id, worker_pool[i + 1].agent_id, MessageTypes.MSG_BUILDING_NEEDED, BuildingTypes.Kiln)
+        worker_pool[-1].change_state(TrainingState(None, TIME_TRAIN_BUILDER, BuilderState()))
+        kiln_msg = Telegram(context.agent_id, worker_pool[-1].agent_id, MessageTypes.MSG_BUILDING_NEEDED, BuildingTypes.Kiln)
         context.world.dispatch(kiln_msg, TIME_TRAIN_BUILDER + 1)
 
     def on_message(self, context, telegram):
 
-        if telegram.message is MessageTypes.MSG_BUILDING_NEEDED:
+        if telegram.message == MessageTypes.MSG_BUILDING_NEEDED:
             print("Yeah, yeah, I'll get it sorted")
             builder = context.world.get_agents_in_state(BuilderState, 1)
             if builder is None:
@@ -210,6 +214,12 @@ class ManagerState(State):
             else:
                 build_msg = Telegram(context.agent_id, builder.agent_id, MessageTypes.MSG_BUILDING_NEEDED, telegram.data)
                 context.world.dispatch(build_msg)
+        elif telegram.message == MessageTypes.MSG_RESOURCE_NEEDED:
+            res, cell, count = telegram.data
+            print("I'll get someone right on it.")
+            worker_pool = context.world.get_agents_in_state(WorkerState, 3)
+            for w in worker_pool:
+                w.change_state(WorkerFetchState(res, cell, count))
 
 class TrainingState(State):
 
@@ -232,7 +242,7 @@ class TrainingState(State):
             self.begun = True
 
     def enter(self, context):
-        print("Training to become a", type(self.after_train))
+        context.color = COL_TRAINING
         if self.location_type is None:
             self.begun = True
         else:
@@ -253,20 +263,45 @@ class TrainingState(State):
 class BuilderState(State):
 
     def __init__(self):
-        self.is_building = False
+        self.building = None
+        self.has_begun = False
+
+    @property
+    def resource(self):
+        return self.building.value[0]
+
+    @property
+    def count(self):
+        return self.building.value[1]
+
+    @property
+    def time(self):
+        return self.building.value[2]
+
+    def check_requirements(self, context):
+        if self.building is not None and not self.has_begun:
+            res = context.world.get_resource(context.location, self.resource)
+            if res < self.count:
+                print("Need some mats!")
+                data = (self.resource, context.location, self.count)
+                mgr = context.world.get_agents_in_state(ManagerState, 1)
+                if mgr is not None:
+                    resource_msg = Telegram(context.agent_id, mgr.agent_id, MessageTypes.MSG_RESOURCE_NEEDED, data)
+                    context.world.dispatch(resource_msg)
+            else:
+                print("Beginning construction!")
+                context.world.add_resource(context.location, self.resource, -self.count)
+                check_msg = Telegram(context.agent_id, context.agent_id, MessageTypes.MSG_BUILDING_FINISH)
+                context.world.dispatch(check_msg, self.time)
+                self.has_begun = True
 
     def enter(self, context):
-        if self.is_building:
-            res = context.world.get_resource(context.location, ResourceTypes.Log)
-            if res < BUILD_KILN_LOGS:
-                print("Need some mats!")
-                data = (ResourceTypes.Log, context.location, BUILD_KILN_LOGS)
-                resource_msg = Telegram(context.agent_id, None, MessageTypes.MSG_RESOURCE_NEEDED, data)
-                context.world.dispatch(resource_msg)
+        context.color = COL_BUILDER
+        self.check_requirements(context)
 
     def on_message(self, context, telegram):
 
-        if telegram.message is MessageTypes.MSG_BUILDING_NEEDED:
+        if telegram.message == MessageTypes.MSG_BUILDING_NEEDED:
             print("Sure thing, boss!")
             camp_location = context.world.get_locations(BuildingTypes.Camp)
             build_origin = camp_location[0] if camp_location is not None else context.location
@@ -274,19 +309,24 @@ class BuilderState(State):
             context.world.reveal(build_site)
             goto = GotoState(build_site, on_arrive=self)
             context.change_state(goto)
-            self.is_building = True
-            return
+            self.building = telegram.data
+            return True
+        elif telegram.message == MessageTypes.MSG_FETCH_DONE:
+            print("Cheers, lads!")
+            self.check_requirements(context)
+            return True
+        elif telegram.message == MessageTypes.MSG_BUILDING_FINISH:
+            print("Job's done!")
+            context.world.add_location(context.location, self.building)
+            done_msg = Telegram(context.agent_id, None, MessageTypes.MSG_BUILDING_DONE, self.building)
+            context.world.dispatch(done_msg)
+            self.building = None
+            self.has_begun = False
+            return True
 
 class WorkerState(State):
 
     def on_message(self, context, telegram):
-        if telegram.message is MessageTypes.MSG_RESOURCE_FOUND:
-            res, cell = telegram.data
-            if res is TerrainTypes.Tree:
-                print("Going to chop that tree down real good, eh!")
-                state = WorkerLoggerState(cell)
-                context.change_state(state)
-                return True
 
         if telegram.message is MessageTypes.MSG_RESOURCE_NEEDED:
             res, cell, count = telegram.data
@@ -295,61 +335,68 @@ class WorkerState(State):
 
 class WorkerLoggerState(WorkerState):
 
-    def __init__(self, cell):
-        self._target = cell
-        self._timer = TIME_CHOP_TREE
+    def __init__(self):
+        self.state = Actions.Idle
+        self.timer = 0
 
     def enter(self, context):
-        if context.location != self._target:
-            context.change_state(GotoState(self._target, on_arrive=self))
-            return
+        context.color = COL_LOGGER
+        if self.state == Actions.Walking:
+            self.state = Actions.Working
+            self.timer = TIME_CHOP_TREE
 
-        print("Time to get a-choppin'!")
+    def on_path(self, context, success, nodes):
+        if success:
+            self.state = Actions.Walking
+            goto = GotoState(nodes[-1], on_arrive=self)
+            context.change_state(goto)
+        else:
+            self.state = Actions.Idle
 
     def execute(self, context, step):
-        self._timer -= step
-        if self._timer <= 0:
-            print("TIMBER!")
-            context.world.graph.set_terrain(self._target, TerrainTypes.Stump)
-            context.world.add_resource(context.location, ResourceTypes.Log)
-            camp = context.world.get_locations(BuildingTypes.Camp)
-            if camp is not None:
-                print("Guess I'll carry this to the camp.")
-                state = WorkerTransportState(context.location, camp[0], ResourceTypes.Log)
-                context.change_state(state)
-            else:
-                print("I'll just leave this here, I suppose")
-                context.change_state(WorkerState())
+        if self.state == Actions.Working:
+            self.timer -= 1
+            if self.timer <= 0:
+                context.world.graph.set_tile(context.location, TerrainTypes.Stump, 1)
+                context.world.add_resource(context.location, ResourceTypes.Log)
+                self.state = Actions.Idle
+                self.timer = TIME_CHOP_TREE
+        elif self.state == Actions.Idle:
+            self.state = Actions.Waiting
+            camp = context.world.get_locations(BuildingTypes.Camp)[0]
+            context.world.path_nearest_terrain(camp, TerrainTypes.Tree, lambda a, b: self.on_path(context, a, b))
 
     def on_message(self, context, telegram):
         return False
 
 class WorkerTransportState(WorkerState):
 
-    def __init__(self, from_tile, to_tile, resource=None, count=1, search=False):
+    def __init__(self, from_tile, to_tile, resource=None, count=1, on_finish=None):
         self.resource = resource
         self.from_tile = from_tile
         self.to_tile = to_tile
         self.count = count
-        self.search = search
         self.is_carrying = False
+        self.on_finish = on_finish
 
     def enter(self, context):
         if self.is_carrying and context.location == self.to_tile:
+            self.is_carrying = False
             count = context.world.add_resource(context.location, self.resource)
-            print("Phew!")
             if count < self.count:
                 goto = GotoState(self.from_tile, on_arrive=self)
                 context.change_state(goto)
             else:
-                context.change_state(WorkerState())
+                state = self.on_finish if self.on_finish is not None else WorkerState()
+                context.change_state(state)
         elif context.location == self.from_tile:
             if context.world.get_resource(context.location, self.resource) > 0:
+                context.world.add_resource(context.location, self.resource, -1)
                 self.is_carrying = True
                 goto = GotoState(self.to_tile, on_arrive=self)
                 context.change_state(goto)
             else:
-                state = WorkerFetchState(self.resource, self.to_tile, self.count) if self.search else WorkerState()
+                state = self.on_finish if self.on_finish is not None else WorkerState()
                 context.change_state(state)
         else:
             goto = GotoState(self.from_tile, on_arrive=self)
@@ -364,18 +411,40 @@ class WorkerFetchState(WorkerState):
         self.resource = resource
         self.location = location
         self.count = count
+        self.state = Actions.Idle
+        self.fail_timer = 0
 
     def enter(self, context):
-        context.world.path_nearest_resource(context.location, self.resource, lambda a, b: self.on_path(context, a, b))
+        context.color = COL_FETCHER
+        if context.world.get_resource(self.location, self.resource) >= self.count:
+            context.change_state(WorkerState())
+            done_msg = Telegram(context.agent_id, None, MessageTypes.MSG_FETCH_DONE, (self.resource, self.location))
+            context.world.dispatch(done_msg)
+        if self.state == Actions.Working:
+            self.state = Actions.Idle
 
     def on_path(self, context, success, nodes):
         if success:
-            transport = WorkerTransportState(nodes[-1], self.location, self.resource, self.count)
-            goto = GotoState(None, nodes=nodes, on_arrive=transport)
-            context.change_state(goto)
+            self.state = Actions.Working
+            trans = WorkerTransportState(nodes[-1], self.location, self.resource, self.count, on_finish=self)
+            context.change_state(trans)
         else:
+            self.state = Actions.Idle
+            self.fail_timer = 60 + randint(0, 120)
+
+    def execute(self, context, step):
+        self.fail_timer -= 1
+        if self.state == Actions.Idle and self.fail_timer <= 0:
+            self.state = Actions.Waiting
+            finish = lambda a, b: self.on_path(context, a, b)
+            context.world.path_nearest_resource(context.location, self.resource, on_finish=finish, exclude=(self.location))
+
+    def on_message(self, context, telegram):
+
+        if telegram.message == MessageTypes.MSG_FETCH_DONE and telegram.data == (self.resource, self.location):
             context.change_state(WorkerState())
-            print("Can't find any of those...")
+            print("Back to screwing around")
+            return True
 
 class ScoutState(GotoState):
 
@@ -388,6 +457,7 @@ class ScoutState(GotoState):
 
     def enter(self, context):
         context.speed = UNIT_SPEED_SCOUT
+        context.color = COL_SCOUT
         self.state = PathStates.Idle
         self.home = context.world.get_locations(BuildingTypes.Camp)
         self.home = self.home[0] if self.home is not None else context.location
@@ -419,10 +489,10 @@ class ScoutState(GotoState):
             super().execute(context, step)
             g = context.world.graph
             for cell in context.world.reveal(context.location):
-                if g.is_in_bounds(cell) and g.get_terrain(cell)[0] is TerrainTypes.Tree:
-                    unit = context.world.get_agents_in_state(WorkerState, 1)
-                    if unit is not None:
-                        found_tree_msg = Telegram(context.agent_id, unit.agent_id, MessageTypes.MSG_RESOURCE_FOUND, (TerrainTypes.Tree, cell))
+                if g.is_in_bounds(cell) and g.get_terrain(cell) is TerrainTypes.Tree:
+                    mgr = context.world.get_agents_in_state(ManagerState, 1)
+                    if mgr is not None:
+                        found_tree_msg = Telegram(context.agent_id, mgr.agent_id, MessageTypes.MSG_RESOURCE_FOUND, (TerrainTypes.Tree, cell))
                         context.world.dispatch(found_tree_msg)
 
 class ScoutBehindState(ScoutState):

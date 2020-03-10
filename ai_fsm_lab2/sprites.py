@@ -5,7 +5,6 @@ import pygame as pg
 from config import *
 from world import TerrainTypes
 
-
 def variant(col, low, high):
     r, g, b = col
     rand = randint(low, high)
@@ -64,6 +63,10 @@ class Tree(Tile):
 
 class UnitSprite(pg.sprite.Sprite):
 
+    unit_colors = {
+
+    }
+
     def __init__(self, game, agent):
         self.groups = game.all_sprites, game.non_fog
         pg.sprite.Sprite.__init__(self, self.groups)
@@ -76,3 +79,4 @@ class UnitSprite(pg.sprite.Sprite):
     def update(self):
         self.rect.x = self.agent.x * TILE_SIZE + 4
         self.rect.y = self.agent.y * TILE_SIZE + 4
+        self.image.fill(self.agent.color)

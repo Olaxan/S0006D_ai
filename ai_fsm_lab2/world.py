@@ -11,6 +11,7 @@ from telegram import Telegram
 
 
 class TerrainTypes(Enum):
+    Void    = auto()
     Ground  = auto()
     Rock    = auto()
     Water   = auto()
@@ -18,13 +19,13 @@ class TerrainTypes(Enum):
     Tree    = auto()
     Stump   = auto()
 
-class BuildingTypes(Enum):
-    Camp    = auto()
-    Kiln    = auto()
-
 class ResourceTypes(Enum):
     Log     = auto()
     Coal    = auto()
+
+class BuildingTypes(Enum):
+    Camp    = (None)
+    Kiln    = (ResourceTypes.Log, BUILD_KILN_LOGS, BUILD_KILN_TIME)
 
 class WorldGrid(WeightedGrid):
 
@@ -35,14 +36,21 @@ class WorldGrid(WeightedGrid):
         self.on_terrain_changed = []
 
     def cost(self, cell):
-        t = self.get_terrain(cell)
+        t = self.get_tile(cell)
         return t[1] if t is not None else 0
 
     def is_free(self, cell):
         return self.cost(cell) != 0
 
-    def set_terrain(self, cell, terrain, weight=None):
-        t = self.get_terrain(cell)
+    def get_tile(self, cell):
+        x, y = cell
+        if self.is_in_bounds(cell):
+            return self.terrain[x + self.width * y]
+        else:
+            return None
+
+    def set_tile(self, cell, terrain, weight=None):
+        t = self.get_tile(cell)
 
         if t is None:
             return
@@ -55,19 +63,16 @@ class WorldGrid(WeightedGrid):
             event(cell, terrain)
 
     def get_terrain(self, cell):
-        x, y = cell
-        if self.is_in_bounds(cell):
-            return self.terrain[x + self.width * y]
-
-        return None
+        t = self.get_tile(cell)
+        return t[0] if t is not None else None
 
     def set_fog(self, cell, fog):
-        t = self.get_terrain(cell)
+        t = self.get_tile(cell)
         if t is not None:
             t[2] = fog
 
     def get_fog(self, cell):
-        t = self.get_terrain(cell)
+        t = self.get_tile(cell)
         return t[2] if t is not None else True
 
     def set_terrain_block(self, cell, size, terrain, weight=1, rand_count=None):
@@ -79,7 +84,7 @@ class WorldGrid(WeightedGrid):
             r = range(size ** 2)
 
         for i in r:
-            self.set_terrain((x + (i % size), y + (i // size)), terrain, weight)
+            self.set_tile((x + (i % size), y + (i // size)), terrain, weight)
 
 def load_map(filename):
     try:
@@ -193,6 +198,8 @@ class World:
             return None
         if count == 1:
             return agents[0]
+        if count is None:
+            return agents
 
         return agents[:min(count, len(agents))]
 
@@ -217,8 +224,22 @@ class World:
         t = threading.Thread(target=Path.a_star_proxy, args=search_args, kwargs=search_kwargs)
         t.start()
 
-    def path_nearest_resource(self, path_from, item_type, on_finish, path_through_fog=False):
-        goal = lambda cell: self.get_resource(cell, item_type) > 0
+    def path_nearest_resource(self, path_from, item_type, on_finish, path_through_fog=False, exclude=None):
+        if exclude is None:
+            exclude = ()
+
+        goal = lambda cell: self.get_resource(cell, item_type) > 0 and cell not in exclude
+        search_args = (self.graph, path_from, goal, on_finish)
+        search_kwargs = {}
+
+        if not path_through_fog:
+            search_kwargs["filter_func"] = lambda cell: not self.graph.get_fog(cell)
+
+        t = threading.Thread(target=Path.dijkstras_proxy, args=search_args, kwargs=search_kwargs)
+        t.start()
+
+    def path_nearest_terrain(self, path_from, terrain_type, on_finish, path_through_fog=False):
+        goal = lambda cell: self.graph.get_terrain(cell) == terrain_type
         search_args = (self.graph, path_from, goal, on_finish)
         search_kwargs = {}
 
@@ -244,7 +265,7 @@ class World:
 
         return discovered
 
-    def add_location(self, location_type, location):
+    def add_location(self, location, location_type):
         self.buildings[location] = location_type
 
     def get_locations(self, location_type):
