@@ -7,7 +7,7 @@ WORLD_PATH = path.join(GAME_PATH, 'map/Map1.txt')
 WORLD_BG_PATH = path.join(GAME_PATH, 'map/Map1.bmp')
 BACKGROUND_PATH = path.join(GAME_PATH, 'res/bg.jpg')
 
-TIME_SCALE = 5
+TIME_SCALE = 1
 WORLD_SCALE = 1 # meters per cell
 WORLD_TREES_PER_CELL = 5
 WORLD_ORE_COUNT = 50

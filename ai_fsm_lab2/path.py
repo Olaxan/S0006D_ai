@@ -160,16 +160,15 @@ class Path:
         return (dx + dy) + (1.4 - 2) * min(dx, dy)
 
     @staticmethod
-    def a_star_search(graph, start, goal, cost_mult=1, filter_func=None, heuristic=None):
+    def a_star_search(graph, start, goal, cost_mult=1, heuristic=None, filter_func=None):
+        """Performs a graph search using the A* algorithm.
+        If no heuristic is provided, functions like Dijkstra's"""
 
         cost_map = {start: 0}
         came_from = {start: None}
 
         if start == goal:
             return True, [goal], 0
-
-        if heuristic is None:
-            heuristic = Path.manhattan
 
         edges = PriorityQueue()
         edges.put(start, 0)
@@ -184,8 +183,50 @@ class Path:
                 next_cost = cost_map[node] + graph.cost(next_node)
                 if next_node not in cost_map or next_cost < cost_map[next_node]:
                     cost_map[next_node] = next_cost
-                    priority = next_cost + cost_mult * heuristic(next_node, goal)
+                    priority = next_cost
+
+                    if heuristic is not None:
+                        priority += cost_mult * heuristic(next_node, goal)
+
                     edges.put(next_node, priority)
                     came_from[next_node] = node
 
         return False, [], cost_map[node]
+
+    @staticmethod
+    def a_star_proxy(graph, start, goal, on_finish, cost_mult=1, heuristic=None, filter_func=None):
+        success, path = Path.a_star_search(graph, start, goal, cost_mult, heuristic, filter_func)[:2]
+        on_finish(success, path)
+
+    @staticmethod
+    def dijkstras_nearest(graph, start, goal_func, filter_func=None):
+
+        cost_map = {start: 0}
+        came_from = {start: None}
+
+        if goal_func(start):
+            return True, [start], 0
+
+        edges = PriorityQueue()
+        edges.put(start, 0)
+
+        while not edges.is_empty:
+            node = edges.pop()
+
+            if goal_func(node):
+                return True, Path.reconstruct(came_from, start, node), cost_map[node]
+
+            for next_node in graph.neighbours(node, True, filter_func):
+                next_cost = cost_map[node] + graph.cost(next_node)
+                if next_node not in cost_map or next_cost < cost_map[next_node]:
+                    cost_map[next_node] = next_cost
+                    priority = next_cost
+                    edges.put(next_node, priority)
+                    came_from[next_node] = node
+
+        return False, [], cost_map[node]
+
+    @staticmethod
+    def dijkstras_proxy(graph, start, goal_func, on_finish, filter_func=None):
+        success, path = Path.dijkstras_nearest(graph, start, goal_func, filter_func)[:2]
+        on_finish(success, path)

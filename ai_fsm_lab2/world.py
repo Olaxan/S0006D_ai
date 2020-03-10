@@ -1,5 +1,6 @@
 """ Represent a 2D world with agents and locations """
 
+import threading
 from copy import deepcopy
 from enum import Enum, auto
 from random import randint
@@ -31,6 +32,7 @@ class WorldGrid(WeightedGrid):
         self.width = width
         self.height = height
         self.terrain = [deepcopy([TerrainTypes.Ground, 1, HAS_FOG]) for x in range(width * height)]
+        self.on_terrain_changed = []
 
     def cost(self, cell):
         t = self.get_terrain(cell)
@@ -48,6 +50,9 @@ class WorldGrid(WeightedGrid):
         t[0] = terrain
         if weight is not None:
             t[1] = weight
+
+        for event in self.on_terrain_changed:
+            event(cell, terrain)
 
     def get_terrain(self, cell):
         x, y = cell
@@ -202,12 +207,31 @@ class World:
             if self.graph.is_in_bounds(cell) and self.graph.is_free(cell):
                 return cell
 
-    def get_path(self, path_from, path_to, path_through_fog=False):
-        if path_through_fog:
-            return Path.a_star_search(self.graph, path_from, path_to, WORLD_SCALE)[:2]
-        else:
-            test = lambda cell: not self.graph.get_fog(cell)
-            return Path.a_star_search(self.graph, path_from, path_to, WORLD_SCALE, filter_func=test)[:2]
+    def path(self, path_from, path_to, on_finish, path_through_fog=False):
+        search_args = (self.graph, path_from, path_to, on_finish)
+        search_kwargs = {"heuristic" : Path.diagonal}
+
+        if not path_through_fog:
+            search_kwargs["filter_func"] = lambda cell: not self.graph.get_fog(cell)
+
+        t = threading.Thread(target=Path.a_star_proxy, args=search_args, kwargs=search_kwargs)
+        t.start()
+
+    def path_nearest_resource(self, path_from, item_type, on_finish, path_through_fog=False):
+        goal = lambda cell: self.get_resource(cell, item_type) > 0
+        search_args = (self.graph, path_from, goal, on_finish)
+        search_kwargs = {}
+
+        if not path_through_fog:
+            search_kwargs["filter_func"] = lambda cell: not self.graph.get_fog(cell)
+
+        t = threading.Thread(target=Path.dijkstras_proxy, args=search_args, kwargs=search_kwargs)
+        t.start()
+
+    def path_nearest_fog(self, path_from, on_finish):
+        search_args = (self.graph, path_from, self.graph.get_fog, on_finish)
+        t = threading.Thread(target=Path.dijkstras_proxy, args=search_args)
+        t.start()
 
     def reveal(self, cell):
         discovered = []
@@ -231,7 +255,7 @@ class World:
 
         return locations if len(locations) > 0 else None
 
-    def add_resource(self, resource, location, count=1):
+    def add_resource(self, location, resource, count=1):
         key = (location, resource)
 
         if key not in self.resources:

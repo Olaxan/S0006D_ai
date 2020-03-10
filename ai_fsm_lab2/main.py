@@ -15,8 +15,8 @@ class Game:
 
     def __init__(self):
         pg.init()
-        self.screen = pg.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pg.display.set_caption(WINDOW_CAPTION)
+        self.screen = pg.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pg.HWSURFACE)
+        pg.display.set_caption(WINDOW_CAPTION + "- Loading...")
         self.clock = pg.time.Clock()
         pg.key.set_repeat(500, 100)
 
@@ -39,9 +39,12 @@ class Game:
         self.background = pg.image.load(BACKGROUND_PATH)
 
     def spawn(self):
-        spawn_cell = self.world.get_random_cell()
-        spawn_region = self.world.graph.neighbours(spawn_cell, False)
-        spawn_region.append(spawn_cell)
+        while True:
+            spawn_cell = self.world.get_random_cell()
+            spawn_region = self.world.graph.neighbours(spawn_cell, False)
+            spawn_region.append(spawn_cell)
+            if all(self.world.graph.is_free(elem) for elem in spawn_region):
+                break
 
         for u in range(INIT_UNITS - 1):
             rand_cell = choice(spawn_region)
@@ -86,6 +89,7 @@ class Game:
         self.playing = True
         while self.playing:
             self.dt = self.clock.tick(FPS) / 1000
+            pg.display.set_caption("{} - {} FPS".format(WINDOW_CAPTION, int(self.clock.get_fps())))
             self.events()
             self.update()
             self.draw()

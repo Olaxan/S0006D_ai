@@ -1,6 +1,10 @@
-from random import randint
+from random import randint, random
+
 import pygame as pg
+
 from config import *
+from world import TerrainTypes
+
 
 def variant(col, low, high):
     r, g, b = col
@@ -50,12 +54,13 @@ class Tree(Tile):
     def __init__(self, game, x, y):
         super().__init__(game, x, y)
         self.image.fill(COL_GROUND)
+        self.game.world.graph.on_terrain_changed.append(self.on_changed)
         pg.draw.circle(self.image, COL_TREE, (TILE_SIZE // 2, TILE_SIZE // 2), TILE_SIZE // 3)
 
-class Stump(Tile):
-    def __init__(self, game, x, y):
-        super().__init__(game, x, y)
-        self.image.fill(variant(COL_TREE, -20, -10))
+    def on_changed(self, cell, terrain):
+        if (self.x, self.y) == cell and terrain == TerrainTypes.Stump:
+            Ground(self.game, self.x, self.y)
+            del self
 
 class UnitSprite(pg.sprite.Sprite):
 
@@ -71,13 +76,3 @@ class UnitSprite(pg.sprite.Sprite):
     def update(self):
         self.rect.x = self.agent.x * TILE_SIZE + 4
         self.rect.y = self.agent.y * TILE_SIZE + 4
-
-class WorkerSprite(UnitSprite):
-    def __init__(self, game, agent):
-        super().__init__(game, agent)
-        self.image.fill(COL_WORKER)
-
-class ScoutSprite(UnitSprite):
-    def __init__(self, game, agent):
-        super().__init__(game, agent)
-        self.image.fill(COL_SCOUT)
