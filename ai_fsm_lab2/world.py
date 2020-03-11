@@ -135,6 +135,9 @@ class World:
         self.buildings = {}
         self.resources = {}
 
+        self.on_buildings_changed = []
+        self.on_resources_changed = []
+
     @classmethod
     def from_map(cls, filename):
         grid = load_map(filename)
@@ -211,7 +214,7 @@ class World:
                 o_x, o_y = origin
                 cell = (o_x + randint(-radius, radius), o_y + randint(-radius, radius))
 
-            if self.graph.is_in_bounds(cell) and self.graph.is_free(cell):
+            if self.graph.is_in_bounds(cell) and self.graph.is_free(cell) and cell not in self.buildings:
                 return cell
 
     def path(self, path_from, path_to, on_finish, path_through_fog=False):
@@ -226,7 +229,7 @@ class World:
 
     def path_nearest_resource(self, path_from, item_type, on_finish, path_through_fog=False, exclude=None):
         if exclude is None:
-            exclude = ()
+            exclude = []
 
         goal = lambda cell: self.get_resource(cell, item_type) > 0 and cell not in exclude
         search_args = (self.graph, path_from, goal, on_finish)
@@ -268,6 +271,9 @@ class World:
     def add_location(self, location, location_type):
         self.buildings[location] = location_type
 
+        for event in self.on_buildings_changed:
+            event(location, location_type)
+
     def get_locations(self, location_type):
         locations = []
         for key in self.buildings:
@@ -283,7 +289,12 @@ class World:
             self.resources[key] = 0
 
         self.resources[key] += count
-        return self.resources[key]
+        current = self.resources[key]
+
+        for event in self.on_resources_changed:
+            event(location, resource, current)
+
+        return current
 
     def get_resource(self, location, resource):
         key = (location, resource)

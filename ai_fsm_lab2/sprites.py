@@ -61,11 +61,24 @@ class Tree(Tile):
             Ground(self.game, self.x, self.y)
             del self
 
+class Camp(Tile):
+
+    def __init__(self, game, x, y):
+        super().__init__(game, x, y, TILE_SIZE)
+        self.groups = game.all_sprites, game.buildings
+        self.image.fill(COL_GROUND)
+        radius = int(TILE_SIZE * 1.5)
+        pg.draw.circle(self.image, COL_CAMP, (radius, radius), radius)
+
+class Kiln(Tile):
+
+    def __init__(self, game, x, y):
+        super().__init__(game, x, y, TILE_SIZE // 2)
+        self.groups = game.all_sprites, game.buildings
+        self.image.fill(COL_GROUND)
+        pg.draw.circle(self.image, COL_KILN, (TILE_SIZE, TILE_SIZE), TILE_SIZE)
+
 class UnitSprite(pg.sprite.Sprite):
-
-    unit_colors = {
-
-    }
 
     def __init__(self, game, agent):
         self.groups = game.all_sprites, game.non_fog

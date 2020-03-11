@@ -8,7 +8,7 @@ from camera import Camera
 from config import *
 from sprites import *
 from unit import ManagerState, Unit, WorkerState
-from world import TerrainTypes, World
+from world import TerrainTypes, ResourceTypes, BuildingTypes, World
 
 
 class Game:
@@ -27,6 +27,7 @@ class Game:
         self.all_sprites = None
         self.fog = None
         self.non_fog = None
+        self.buildings = None
 
         self.camera = None
         self.playing = False
@@ -63,6 +64,7 @@ class Game:
         self.all_sprites = pg.sprite.Group()
         self.fog = pg.sprite.Group()
         self.non_fog = pg.sprite.Group()
+        self.buildings = pg.sprite.Group()
         g = self.world.graph
         for i, cell in enumerate(g.terrain):
             x = i % g.width
@@ -78,11 +80,23 @@ class Game:
             elif cell[0] is TerrainTypes.Tree:
                 Tree(self, x, y)
 
+        self.world.on_buildings_changed.append(self.on_building)
+        self.world.on_resources_changed.append(self.on_resource)
+
         self.spawn_cell = self.spawn()
         x_offset = WINDOW_WIDTH / 2 - self.spawn_cell[0] * TILE_SIZE
         y_offset = WINDOW_HEIGHT / 2 - self.spawn_cell[1] * TILE_SIZE
         self.world.reveal(self.spawn_cell)
         self.camera = Camera(x_offset, y_offset, self.world.width * TILE_SIZE, self.world.height * TILE_SIZE)
+
+    def on_building(self, cell, building):
+        if building == BuildingTypes.Camp:
+            Camp(self, *cell)
+        elif building == BuildingTypes.Kiln:
+            Kiln(self, *cell)
+
+    def on_resource(self, cell, resource, count):
+        pass
 
     def run(self):
         # game loop - set self.playing = False to end the game
@@ -111,6 +125,8 @@ class Game:
             fog = self.world.graph.get_fog((sprite.x, sprite.y))
             if not fog:
                 self.screen.blit(sprite.image, self.camera.apply(sprite))
+        for building in self.buildings:
+            self.screen.blit(building.image, self.camera.apply(building))
         for unit in self.non_fog:
             self.screen.blit(unit.image, self.camera.apply(unit))
 
