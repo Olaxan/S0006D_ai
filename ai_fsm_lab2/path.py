@@ -168,7 +168,7 @@ class Path:
         came_from = {start: None}
 
         if start == goal:
-            return True, [goal], 0
+            return True, [goal]
 
         edges = PriorityQueue()
         edges.put(start, 0)
@@ -177,7 +177,7 @@ class Path:
             node = edges.pop()
 
             if node == goal:
-                return True, Path.reconstruct(came_from, start, goal), cost_map[node]
+                return True, Path.reconstruct(came_from, start, goal)
 
             for next_node in graph.neighbours(node, True, filter_func):
                 next_cost = cost_map[node] + graph.cost(next_node)
@@ -191,11 +191,11 @@ class Path:
                     edges.put(next_node, priority)
                     came_from[next_node] = node
 
-        return False, [], cost_map[node]
+        return False, []
 
     @staticmethod
     def a_star_proxy(graph, start, goal, on_finish, cost_mult=1, heuristic=None, filter_func=None):
-        success, path = Path.a_star_search(graph, start, goal, cost_mult, heuristic, filter_func)[:2]
+        success, path = Path.a_star_search(graph, start, goal, cost_mult, heuristic, filter_func)
         on_finish(success, path)
 
     @staticmethod
@@ -205,7 +205,7 @@ class Path:
         came_from = {start: None}
 
         if goal_func(start):
-            return True, [start], 0
+            return True, [start]
 
         edges = PriorityQueue()
         edges.put(start, 0)
@@ -214,7 +214,7 @@ class Path:
             node = edges.pop()
 
             if goal_func(node):
-                return True, Path.reconstruct(came_from, start, node), cost_map[node]
+                return True, Path.reconstruct(came_from, start, node)
 
             for next_node in graph.neighbours(node, True, filter_func):
                 next_cost = cost_map[node] + graph.cost(next_node)
@@ -224,9 +224,9 @@ class Path:
                     edges.put(next_node, priority)
                     came_from[next_node] = node
 
-        return False, [], cost_map[node]
+        return False, []
 
     @staticmethod
     def dijkstras_proxy(graph, start, goal_func, on_finish, filter_func=None):
-        success, path = Path.dijkstras_nearest(graph, start, goal_func, filter_func)[:2]
+        success, path = Path.dijkstras_nearest(graph, start, goal_func, filter_func)
         on_finish(success, path)

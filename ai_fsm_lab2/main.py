@@ -7,7 +7,7 @@ import pygame as pg
 from camera import Camera
 from config import *
 from sprites import *
-from unit import ManagerState, Unit, WorkerState
+from unit import Manager, Unit, Worker
 from world import TerrainTypes, ResourceTypes, BuildingTypes, World
 
 
@@ -49,11 +49,11 @@ class Game:
 
         for u in range(INIT_UNITS - 1):
             rand_cell = choice(spawn_region)
-            unit = Unit(self.world, rand_cell, WorkerState)
+            unit = Unit(self.world, rand_cell, Worker)
             UnitSprite(self, unit)
             unit.start()
 
-        manager = Unit(self.world, spawn_cell, ManagerState)
+        manager = Unit(self.world, spawn_cell, Manager)
         manager.start()
         UnitSprite(self, manager)
 
