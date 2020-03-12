@@ -1,6 +1,7 @@
 """ Represent a 2D world with agents and locations """
 
 import threading
+from collections import defaultdict
 from queue import Queue
 from copy import deepcopy
 from enum import Enum, auto
@@ -29,6 +30,10 @@ class BuildingTypes(Enum):
     Buildsite   = auto()
     Kiln        = (ResourceTypes.Log, BUILD_KILN_LOGS, BUILD_KILN_TIME)
 
+class PathMode(Enum):
+    AStar       = auto()
+    Dijkstra    = auto
+
 class WorldGrid(WeightedGrid):
 
     def __init__(self, width, height):
@@ -45,13 +50,15 @@ class WorldGrid(WeightedGrid):
         return self.cost(cell) != 0
 
     def get_tile(self, cell):
+
         x, y = cell
         if self.is_in_bounds(cell):
             return self.terrain[x + self.width * y]
-        else:
-            return None
+
+        return None
 
     def set_tile(self, cell, terrain, weight=None):
+
         t = self.get_tile(cell)
 
         if t is None:
@@ -135,9 +142,11 @@ class World:
         self._graph = grid
         self.agents = {}
         self.buildings = {}
-        self.resources = {}
+        self.resources = defaultdict(lambda: defaultdict(int))
 
         self.path_queue = Queue()
+        self.path_thread = threading.Thread(target=self.do_path)
+        self.path_thread.start()
 
         self.on_buildings_changed = []
         self.on_resources_changed = []
@@ -222,49 +231,47 @@ class World:
             if self.graph.is_in_bounds(cell) and self.graph.is_free(cell) and cell not in self.buildings:
                 return cell
 
+    def do_path(self):
+        while True:
+            query = self.path_queue.get(block=True)
+
+            fog_filter = None if query[4] else lambda cell: not self.graph.get_fog(cell)
+
+            if query[0] == PathMode.AStar:
+                Path.a_star_proxy(self.graph, query[1], query[2], query[3], filter_func=fog_filter, heuristic=Path.diagonal)
+            elif query[0] == PathMode.Dijkstra:
+                Path.dijkstras_proxy(self.graph, query[1], query[2], query[3], filter_func=fog_filter)
+
     def path(self, path_from, path_to, on_finish, path_through_fog=False):
 
-        search_args = (self.graph, path_from, path_to, on_finish)
-        search_kwargs = {"heuristic" : Path.diagonal}
-
-        if not path_through_fog:
-            search_kwargs["filter_func"] = lambda cell: not self.graph.get_fog(cell)
-
-        t = threading.Thread(target=Path.a_star_proxy, args=search_args, kwargs=search_kwargs)
-        t.start()
+        query = (PathMode.AStar, path_from, path_to, on_finish, path_through_fog)
+        self.path_queue.put(query)
 
     def path_nearest_resource(self, path_from, item_type, on_finish, path_through_fog=False, exclude=None):
 
         if exclude is None:
             exclude = []
 
+        if item_type not in self.resources:
+            on_finish(False, None)
+
         goal = lambda cell: self.get_resource(cell, item_type) > 0 and cell not in exclude
-        search_args = (self.graph, path_from, goal, on_finish)
-        search_kwargs = {}
+        query = (PathMode.Dijkstra, path_from, goal, on_finish, path_through_fog)
+        self.path_queue.put(query)
 
-        if not path_through_fog:
-            search_kwargs["filter_func"] = lambda cell: not self.graph.get_fog(cell)
+    def path_nearest_terrain(self, path_from, terrain_type, on_finish, path_through_fog=False, exclude=None):
 
-        t = threading.Thread(target=Path.dijkstras_proxy, args=search_args, kwargs=search_kwargs)
-        t.start()
+        if exclude is None:
+            exclude = []
 
-    def path_nearest_terrain(self, path_from, terrain_type, on_finish, path_through_fog=False):
-
-        goal = lambda cell: self.graph.get_terrain(cell) == terrain_type
-        search_args = (self.graph, path_from, goal, on_finish)
-        search_kwargs = {}
-
-        if not path_through_fog:
-            search_kwargs["filter_func"] = lambda cell: not self.graph.get_fog(cell)
-
-        t = threading.Thread(target=Path.dijkstras_proxy, args=search_args, kwargs=search_kwargs)
-        t.start()
+        goal = lambda cell: self.graph.get_terrain(cell) == terrain_type and cell not in exclude
+        query = (PathMode.Dijkstra, path_from, goal, on_finish, path_through_fog)
+        self.path_queue.put(query)
 
     def path_nearest_fog(self, path_from, on_finish):
 
-        search_args = (self.graph, path_from, self.graph.get_fog, on_finish)
-        t = threading.Thread(target=Path.dijkstras_proxy, args=search_args)
-        t.start()
+        query = (PathMode.Dijkstra, path_from, self.graph.get_fog, on_finish, None)
+        self.path_queue.put(query)
 
     def reveal(self, cell):
 
@@ -296,22 +303,16 @@ class World:
 
     def add_resource(self, location, resource, count=1):
 
-        key = (location, resource)
-
-        if key not in self.resources:
-            self.resources[key] = 0
-
-        self.resources[key] += count
-        current = self.resources[key]
+        self.resources[resource][location] += count
+        c = self.resources[resource][location]
 
         for event in self.on_resources_changed:
-            event(location, resource, current)
+            event(location, resource, c)
 
-        return current
+        return c
 
     def get_resource(self, location, resource):
-        key = (location, resource)
-        return self.resources.get(key, 0)
+        return self.resources[resource][location]
 
     def step_forward(self, step=1):
         """Move the world forward a step of the specified size, update all agents"""
