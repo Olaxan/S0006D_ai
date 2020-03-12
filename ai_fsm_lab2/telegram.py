@@ -11,6 +11,7 @@ class MessageTypes(Enum):
     MSG_BUILDING_NEEDED = auto()
     MSG_BUILDING_DONE   = auto()
     MSG_BUILDING_FINISH = auto()
+    MSG_CHANGE_STATE    = auto()
 
 class Telegram:
 

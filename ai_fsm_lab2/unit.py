@@ -164,7 +164,7 @@ class PathError(State):
 class Manager(State):
 
     def __init__(self):
-        self.trees = []
+        pass
 
     def enter(self, context):
 
@@ -191,7 +191,6 @@ class Manager(State):
     def on_message(self, context, telegram):
 
         if telegram.message == MessageTypes.MSG_BUILDING_NEEDED:
-            print("Yeah, yeah, I'll get it sorted")
 
             builder = context.world.get_agents_in_state(Builder, 1)
 
@@ -202,13 +201,12 @@ class Manager(State):
                     trainees = list(filter(lambda L: L.after_train is Builder, trainees))
 
                     if len(trainees) > 0:
-                        print("I'll put my best man on it! Once he's done training...")
+
                         first = trainees[0]
                         build_msg = Telegram(context.agent_id, first.agent_id, MessageTypes.MSG_BUILDING_NEEDED, telegram.data)
                         context.world.dispatch(build_msg, first.time + 1)
                         return
 
-                print("Oops, ain't got no builders...")
                 builder_state = Builder()
                 worker = context.world.get_agents_in_state(Worker, 1)
 
@@ -216,29 +214,31 @@ class Manager(State):
                     worker.change_state(Training(None, TIME_TRAIN_BUILDER, builder_state))
                     build_msg = Telegram(context.agent_id, worker.agent_id, MessageTypes.MSG_BUILDING_NEEDED, telegram.data)
                     context.world.dispatch(build_msg, TIME_TRAIN_BUILDER + 1)
-                else:
-                    print("And no workers, either!")
             else:
                 build_msg = Telegram(context.agent_id, builder.agent_id, MessageTypes.MSG_BUILDING_NEEDED, telegram.data)
                 context.world.dispatch(build_msg)
-        elif telegram.message == MessageTypes.MSG_RESOURCE_NEEDED:
 
-            print("I'll get someone right on it.")
+        elif telegram.message == MessageTypes.MSG_RESOURCE_NEEDED:
             res, cell, count = telegram.data
             worker_pool = context.world.get_agents_in_state(Worker, 3)
             for w in worker_pool:
                 w.change_state(WorkerFetch(res, cell, count))
-        elif telegram.message == MessageTypes.MSG_BUILDING_DONE:
 
+        elif telegram.message == MessageTypes.MSG_BUILDING_DONE:
             building, location = telegram.data
 
             if building == BuildingTypes.Kiln:
-                worker = context.world.get_agents_in_state(Worker, 1)
+                worker = context.world.get_agents_in_state(Worker, 2)
+                camp = context.world.get_locations(BuildingTypes.Camp)
                 if worker is not None:
-                    worker.change_state(Training(BuildingTypes.Kiln, TIME_TRAIN_KILNER, Kilner(location)))
+                    worker[0].change_state(Training(BuildingTypes.Kiln, TIME_TRAIN_KILNER, Kilner(location)))
+                if len(worker) == 2 and camp is not None:
+                    state = WorkerFetch(ResourceTypes.Coal, camp[0], None)
+                    change_msg = Telegram(context.agent_id, worker[1].agent_id, MessageTypes.MSG_CHANGE_STATE, data=state)
+                    context.world.dispatch(change_msg, TIME_TRAIN_KILNER)
 
-                #next_kiln = Telegram(context.agent_id, telegram.sender_id, MessageTypes.MSG_BUILDING_NEEDED, BuildingTypes.Kiln)
-                #context.world.dispatch(next_kiln, randint(0, BUILD_KILN_DELAY))
+                next_kiln = Telegram(context.agent_id, telegram.sender_id, MessageTypes.MSG_BUILDING_NEEDED, BuildingTypes.Kiln)
+                context.world.dispatch(next_kiln, randint(0, BUILD_KILN_DELAY))
 
 class Training(State):
 
@@ -338,6 +338,7 @@ class Builder(State):
             build_origin = camp_location[0] if camp_location is not None else context.location
             build_site = context.world.get_random_cell(build_origin, BUILD_CAMP_RANGE)
             context.world.reveal(build_site)
+            context.world.add_location(build_site, BuildingTypes.Buildsite)
             goto = Goto(build_site, on_arrive=self)
             context.change_state(goto)
             self.building = telegram.data
@@ -371,6 +372,11 @@ class Worker(State):
             res, cell, count = telegram.data
             context.change_state(WorkerFetch(res, cell, count))
             return True
+
+        elif telegram.message == MessageTypes.MSG_CHANGE_STATE:
+            context.change_state(telegram.data)
+            return True
+
 
 class WorkerLogger(Worker):
 
@@ -454,7 +460,7 @@ class WorkerTransport(Worker):
 
 class WorkerFetch(Worker):
 
-    def __init__(self, resource, location, count):
+    def __init__(self, resource, location, count=None):
         self.resource = resource
         self.location = location
         self.count = count
@@ -474,7 +480,7 @@ class WorkerFetch(Worker):
             context.change_state(trans)
         else:
             self.state = Actions.Idle
-            self.fail_timer = 1 + randint(0, 5)
+            self.fail_timer = 1 + randint(0, MAX_PATH_FAIL_TIME)
 
     def execute(self, context, step):
 
@@ -482,9 +488,10 @@ class WorkerFetch(Worker):
         if self.state == Actions.Idle and self.fail_timer <= 0:
             self.state = Actions.Waiting
             finish = lambda a, b: self.on_path(context, a, b)
-            context.world.path_nearest_resource(context.location, self.resource, on_finish=finish, exclude=[self.location])
+            context.world.path_nearest_resource(context.location, self.resource, on_finish=finish, exclude=context.world.buildings)
 
     def on_message(self, context, telegram):
+        return False
 
         if telegram.message == MessageTypes.MSG_RESOURCE_CHANGE:
             if telegram.data[:2] == (self.resource, self.location) and telegram.data[2] >= self.count:

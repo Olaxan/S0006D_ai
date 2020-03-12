@@ -1,6 +1,7 @@
 """ Represent a 2D world with agents and locations """
 
 import threading
+from queue import Queue
 from copy import deepcopy
 from enum import Enum, auto
 from random import randint
@@ -24,8 +25,9 @@ class ResourceTypes(Enum):
     Coal    = auto()
 
 class BuildingTypes(Enum):
-    Camp    = (None)
-    Kiln    = (ResourceTypes.Log, BUILD_KILN_LOGS, BUILD_KILN_TIME)
+    Camp        = auto()
+    Buildsite   = auto()
+    Kiln        = (ResourceTypes.Log, BUILD_KILN_LOGS, BUILD_KILN_TIME)
 
 class WorldGrid(WeightedGrid):
 
@@ -135,6 +137,8 @@ class World:
         self.buildings = {}
         self.resources = {}
 
+        self.path_queue = Queue()
+
         self.on_buildings_changed = []
         self.on_resources_changed = []
 
@@ -207,6 +211,7 @@ class World:
         return agents[:min(count, len(agents))]
 
     def get_random_cell(self, origin=None, radius=10):
+
         while True:
             if origin is None:
                 cell = (randint(0, self.width - 1), randint(0, self.height - 1))
@@ -218,6 +223,7 @@ class World:
                 return cell
 
     def path(self, path_from, path_to, on_finish, path_through_fog=False):
+
         search_args = (self.graph, path_from, path_to, on_finish)
         search_kwargs = {"heuristic" : Path.diagonal}
 
@@ -228,6 +234,7 @@ class World:
         t.start()
 
     def path_nearest_resource(self, path_from, item_type, on_finish, path_through_fog=False, exclude=None):
+
         if exclude is None:
             exclude = []
 
@@ -242,6 +249,7 @@ class World:
         t.start()
 
     def path_nearest_terrain(self, path_from, terrain_type, on_finish, path_through_fog=False):
+
         goal = lambda cell: self.graph.get_terrain(cell) == terrain_type
         search_args = (self.graph, path_from, goal, on_finish)
         search_kwargs = {}
@@ -253,11 +261,13 @@ class World:
         t.start()
 
     def path_nearest_fog(self, path_from, on_finish):
+
         search_args = (self.graph, path_from, self.graph.get_fog, on_finish)
         t = threading.Thread(target=Path.dijkstras_proxy, args=search_args)
         t.start()
 
     def reveal(self, cell):
+
         discovered = []
         self.graph.set_fog(cell, False)
         neighbours = self.graph.neighbours(cell, False)
@@ -269,12 +279,14 @@ class World:
         return discovered
 
     def add_location(self, location, location_type):
+
         self.buildings[location] = location_type
 
         for event in self.on_buildings_changed:
             event(location, location_type)
 
     def get_locations(self, location_type):
+
         locations = []
         for key in self.buildings:
             if self.buildings[key] is location_type:
@@ -283,6 +295,7 @@ class World:
         return locations if len(locations) > 0 else None
 
     def add_resource(self, location, resource, count=1):
+
         key = (location, resource)
 
         if key not in self.resources:
