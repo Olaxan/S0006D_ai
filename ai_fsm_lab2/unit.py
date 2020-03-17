@@ -40,7 +40,6 @@ class Unit(StateContext):
     def init(self):
         """Gets called by world manager, just before receiving an agent_id
         For delayed initalization of variables that need reference to World"""
-        pass
 
     @property
     def agent_id(self):
@@ -224,10 +223,10 @@ class Manager(State):
             build_msg = Telegram(context.agent_id, builder.agent_id, MessageTypes.MSG_BUILDING_NEEDED, building_data)
             context.world.dispatch(build_msg)
 
-    def request_collection(self, context, collection_data):
-        worker_pool = context.world.get_agents_in_state(Worker, 3)
-        for w in worker_pool:
-            w.change_state(Fetcher(*collection_data))
+    def request_collection(self, context, count, collection_data):
+        worker_pool = context.world.get_agents_in_state(Worker, count)
+        for worker in worker_pool:
+            worker.change_state(Fetcher(*collection_data))
 
     def on_message(self, context, telegram):
 
@@ -235,23 +234,17 @@ class Manager(State):
             self.request_construction(context, telegram.data)
 
         elif telegram.message == MessageTypes.MSG_RESOURCE_NEEDED:
-            self.request_collection(context, telegram.data)
+            self.request_collection(context, 3, telegram.data)
 
         elif telegram.message == MessageTypes.MSG_BUILDING_DONE:
             building, location = telegram.data
 
             if building == BuildingTypes.Kiln:
-                worker = context.world.get_agents_in_state(Worker, 2)
-                camp = context.world.get_locations(BuildingTypes.Camp)
+                worker = context.world.get_agents_in_state(Worker, 1)
 
                 if worker is not None:
                     training_data = (BuildingTypes.Kiln, TIME_TRAIN_KILNER, Kilner(location))
-                    worker[0].change_state(Training(*training_data))
-
-                if len(worker) == 2 and camp is not None:
-                    state = Fetcher(ResourceTypes.Coal, camp[0], None)
-                    change_msg = Telegram(context.agent_id, worker[1].agent_id, MessageTypes.MSG_CHANGE_STATE, data=state)
-                    context.world.dispatch(change_msg, TIME_TRAIN_KILNER)
+                    worker.change_state(Training(*training_data))
 
                 if len(context.world.get_locations(BuildingTypes.Kiln)) < TARGET_KILN:
                     next_kiln = Telegram(context.agent_id, telegram.sender_id, MessageTypes.MSG_BUILDING_NEEDED, BuildingTypes.Kiln)
@@ -310,6 +303,9 @@ class Training(State):
             return True
 
 class Builder(State):
+    """A builder listens for MSG_BUILDING_NEEDED and constructs
+    them, using the required materials, sending out
+    MSG_RESOURCE_NEEDED if necessary"""
 
     def __init__(self):
         self.building = None
@@ -335,7 +331,7 @@ class Builder(State):
             res = context.world.get_resource(context.location, self.resource)
 
             if res < self.count:
-                print("Need {} {} to build a {}!".format(self.count, self.resource.name, self.building.name))
+                print("Need {} {}s to build a {}!".format(self.count, self.resource.name, self.building.name))
                 data = (self.resource, context.location, self.count)
                 mgr = context.world.get_agents_in_state(Manager, 1)
 
@@ -385,7 +381,7 @@ class Builder(State):
             self.begin_construction(context, telegram.data)
             return True
 
-        if telegram.message == MessageTypes.MSG_RESOURCE_CHANGE and not self.has_begun:
+        if telegram.message == MessageTypes.MSG_RESOURCE_CHANGE and self.building is not None and not self.has_begun:
             if telegram.data[:2] == (self.resource, context.location) and telegram.data[2] >= self.count:
                 self.check_requirements(context)
             return True
@@ -405,11 +401,12 @@ class Worker(State):
 
     def on_message(self, context, telegram):
 
-        if telegram.message is MessageTypes.MSG_RESOURCE_NEEDED:
+        if telegram.message == MessageTypes.MSG_RESOURCE_NEEDED:
             context.change_state(Fetcher(*telegram.data))
             return True
 
         elif telegram.message == MessageTypes.MSG_CHANGE_STATE:
+            print("MSG_CHANGE_STATE:", telegram.data)
             context.change_state(telegram.data)
             return True
 
@@ -665,7 +662,10 @@ class Kilner(State):
     def execute(self, context, step):
 
         if self.state == Actions.Idle:
-            if context.world.get_resource(context.location, ResourceTypes.Log) >= COAL_PRODUCE_LOGS:
+
+            count = context.world.get_resource(context.location, ResourceTypes.Log)
+
+            if count >= COAL_PRODUCE_LOGS:
                 context.world.add_resource(context.location, ResourceTypes.Log, -COAL_PRODUCE_LOGS)
                 self.timer = TIME_PRODUCE_COAL
                 self.state = Actions.Working
@@ -674,7 +674,7 @@ class Kilner(State):
                 resource_data = (ResourceTypes.Log, self.location, 10)
                 mgr = context.world.get_agents_in_state(Manager, 1)
                 if mgr is not None:
-                    print("Need logs to make coal!")
+                    print("Need {} Logs to make coal!".format(COAL_PRODUCE_LOGS - count))
                     res_msg = Telegram(context.agent_id, mgr.agent_id, MessageTypes.MSG_RESOURCE_NEEDED, data=resource_data)
                     context.world.dispatch(res_msg)
 

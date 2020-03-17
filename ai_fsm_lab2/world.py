@@ -13,6 +13,7 @@ from telegram import Telegram
 
 
 class TerrainTypes(Enum):
+    """Represents different types of terrain in the world"""
     Void    = auto()
     Ground  = auto()
     Rock    = auto()
@@ -22,32 +23,39 @@ class TerrainTypes(Enum):
     Stump   = auto()
 
 class ResourceTypes(Enum):
+    """Represents various resources for building and crafting"""
     Log     = auto()
     Coal    = auto()
 
 class BuildingTypes(Enum):
+    """Represents a few types of buildings that can be constructed,
+    as well as holding the construction data"""
     Camp        = auto()
     Buildsite   = auto()
     Kiln        = (ResourceTypes.Log, BUILD_KILN_LOGS, BUILD_KILN_TIME)
 
 class PathMode(Enum):
+    """Represents pathfinding modes"""
     AStar       = auto()
-    Dijkstra    = auto
+    Dijkstra    = auto()
 
 class WorldGrid(WeightedGrid):
 
     def __init__(self, width, height):
-        self.width = width
-        self.height = height
+        super().__init__(width, height)
         self.terrain = [deepcopy([TerrainTypes.Ground, 1, HAS_FOG]) for x in range(width * height)]
         self.on_terrain_changed = []
 
     def cost(self, cell):
+
+        if cell in self.weights:
+            return self.weights[cell]
+
         t = self.get_tile(cell)
         return t[1] if t is not None else 0
 
     def is_free(self, cell):
-        return self.cost(cell) != 0
+        return self.cost(cell) != 0 and cell not in self.walls
 
     def get_tile(self, cell):
 
@@ -96,6 +104,8 @@ class WorldGrid(WeightedGrid):
             self.set_tile((x + (i % size), y + (i // size)), terrain, weight)
 
 def load_map(filename):
+    """Load a map from a file"""
+
     try:
         file = open(filename, "r")
     except OSError:
@@ -192,13 +202,14 @@ class World:
 
     def remove_agent(self, agent_id: int):
         """Remove an agent from the dictionary"""
-        if agent_id in self.agents: self.agents.pop(agent_id)
+        if agent_id in self.agents:
+            self.agents.pop(agent_id)
 
-    def get_agent(self, agent_id: int):
+    def get_agent(self, agent_id):
         """Returns an agent when provided with valid ID"""
-        return self.agents[agent_id] if agent_id in self.agents else None
+        return self.agents.get(agent_id, None)
 
-    def get_agents(self, *agent_ids):
+    def get_agents(self, agent_ids):
         """Return list of agents matching ID:s in args"""
         agents = []
         for agent_id in agent_ids:
@@ -208,6 +219,8 @@ class World:
         return agents
 
     def get_agents_in_state(self, state, count=None):
+        """Returns a list of agents in a particular state (or substate)"""
+
         agents = list(filter(lambda L: isinstance(L.state, state), self.all_agents))
 
         if len(agents) == 0:
@@ -220,6 +233,7 @@ class World:
         return agents[:min(count, len(agents))]
 
     def get_random_cell(self, origin=None, radius=10):
+        """Gets a random cell in the world, or around a specific point"""
 
         while True:
             if origin is None:
@@ -232,6 +246,8 @@ class World:
                 return cell
 
     def do_path(self):
+        """Runs in a separate thread to handle path queries from game agents"""
+
         while True:
             query = self.path_queue.get(block=True)
 
@@ -243,11 +259,14 @@ class World:
                 Path.dijkstras_proxy(self.graph, query[1], query[2], query[3], filter_func=fog_filter)
 
     def path(self, path_from, path_to, on_finish, path_through_fog=False):
+        """Calculates an A* path and runs on_finish with the path data"""
 
         query = (PathMode.AStar, path_from, path_to, on_finish, path_through_fog)
         self.path_queue.put(query)
 
     def path_nearest_resource(self, path_from, item_type, on_finish, path_through_fog=False, exclude=None):
+        """Calculates an path to the nearest resource of a specific type,
+         and runs on_finish with the path data"""
 
         if exclude is None:
             exclude = []
@@ -260,6 +279,8 @@ class World:
         self.path_queue.put(query)
 
     def path_nearest_terrain(self, path_from, terrain_type, on_finish, path_through_fog=False, exclude=None):
+        """Calculates an path to the nearest block of a specific terrain type,
+         and runs on_finish with the path data"""
 
         if exclude is None:
             exclude = []
@@ -269,11 +290,15 @@ class World:
         self.path_queue.put(query)
 
     def path_nearest_fog(self, path_from, on_finish):
+        """Calculates an path to the nearest block with fog-of-war,
+         and runs on_finish with the path data"""
 
         query = (PathMode.Dijkstra, path_from, self.graph.get_fog, on_finish, None)
         self.path_queue.put(query)
 
     def reveal(self, cell):
+        """Removes fog-of-war in a 3x3 pattern around the specified cell,
+        and returns a list of the newly discovered cells"""
 
         discovered = []
         self.graph.set_fog(cell, False)
@@ -286,6 +311,7 @@ class World:
         return discovered
 
     def add_location(self, location, location_type):
+        """Adds a building to the location dictionary"""
 
         self.buildings[location] = location_type
 
@@ -293,6 +319,8 @@ class World:
             event(location, location_type)
 
     def get_locations(self, location_type):
+        """Gets a list of all buildings of the specified type,
+        or None if none were found"""
 
         locations = []
         for key in self.buildings:
@@ -302,9 +330,13 @@ class World:
         return locations if len(locations) > 0 else None
 
     def add_resource(self, location, resource, count=1):
+        """Adds resources to the specified cell"""
 
         self.resources[resource][location] += count
         c = self.resources[resource][location]
+
+        if c == 0:
+            self.resources[resource].pop(location)
 
         for event in self.on_resources_changed:
             event(location, resource, c)
@@ -312,7 +344,12 @@ class World:
         return c
 
     def get_resource(self, location, resource):
-        return self.resources[resource][location]
+        """Gets the number of resources of a specific type at a cell"""
+
+        if location in self.resources[resource]:
+            return self.resources[resource][location]
+
+        return 0
 
     def step_forward(self, step=1):
         """Move the world forward a step of the specified size, update all agents"""
@@ -338,7 +375,7 @@ class World:
                 if agent is not None:
                     agents.append(agent)
             else:
-                agents = self.get_agents(*telegram.receiver_id)
+                agents = self.get_agents(telegram.receiver_id)
 
         if delay <= 0:
             for agent in agents:
